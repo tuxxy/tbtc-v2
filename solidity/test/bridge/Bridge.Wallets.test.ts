@@ -542,35 +542,43 @@ describe("Bridge - Wallets", () => {
             await restoreSnapshot()
           })
 
+          // New admissions now require canonical curve points. Use a real
+          // second key for the uniqueness cases, not unrelated random x/y.
+          const secondKey = ethers.utils.computePublicKey(
+            ethers.utils.hexZeroPad("0x02", 32),
+            false
+          )
+          const oppositeY = ethers.BigNumber.from(
+            "0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f"
+          ).sub(ecdsaWalletTestData.publicKeyY)
           const testData = [
             {
               testName: "with unique wallet ID and unique public key",
               walletID: ethers.utils.randomBytes(32),
-              publicKeyX: ethers.utils.randomBytes(32),
-              publicKeyY: ethers.utils.randomBytes(32),
+              publicKeyX: ethers.utils.hexDataSlice(secondKey, 1, 33),
+              publicKeyY: ethers.utils.hexDataSlice(secondKey, 33, 65),
               expectedError: undefined,
             },
             {
               testName: "with duplicated wallet ID and unique public key",
               walletID: ecdsaWalletTestData.walletID,
-              publicKeyX: ethers.utils.randomBytes(32),
-              publicKeyY: ethers.utils.randomBytes(32),
+              publicKeyX: ethers.utils.hexDataSlice(secondKey, 1, 33),
+              publicKeyY: ethers.utils.hexDataSlice(secondKey, 33, 65),
               expectedError: undefined,
             },
             {
-              testName:
-                "with unique wallet ID, unique public key X and duplicated public key Y",
+              testName: "with an invalid point and duplicated public key Y",
               walletID: ethers.utils.randomBytes(32),
-              publicKeyX: ethers.utils.randomBytes(32),
+              publicKeyX: ethers.constants.HashZero,
               publicKeyY: ecdsaWalletTestData.publicKeyY,
-              expectedError: undefined,
+              expectedError: "Invalid ECDSA curve point",
             },
             {
               testName:
                 "with unique wallet ID, unique public key Y and duplicated public key X",
               walletID: ethers.utils.randomBytes(32),
-              publicKeyX: ecdsaWalletTestData.publicKeyY,
-              publicKeyY: ethers.utils.randomBytes(32),
+              publicKeyX: ecdsaWalletTestData.publicKeyX,
+              publicKeyY: ethers.utils.hexZeroPad(oppositeY.toHexString(), 32),
               expectedError: undefined,
             },
             {
