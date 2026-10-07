@@ -30,6 +30,13 @@ const func: DeployFunction = async function deployBridge(
     waitConfirmations: 1,
   }
 
+  // The inactive extension has a fixed library target. It does not configure
+  // a registry or enable FROST wallet requests.
+  const FrostWallets = await deploy("FrostWallets", deployOptions)
+  const FrostBridge = await deploy("FrostBridge", {
+    ...deployOptions,
+    libraries: { FrostWallets: FrostWallets.address },
+  })
   const Deposit = await deploy("Deposit", deployOptions)
   const DepositSweep = await deploy("DepositSweep", deployOptions)
   const Redemption = await deploy("Redemption", deployOptions)
@@ -56,6 +63,7 @@ const func: DeployFunction = async function deployBridge(
       factoryOpts: {
         signer: await ethers.getSigner(deployer),
         libraries: {
+          FrostBridge: FrostBridge.address,
           Deposit: Deposit.address,
           DepositSweep: DepositSweep.address,
           Redemption: Redemption.address,
@@ -76,6 +84,8 @@ const func: DeployFunction = async function deployBridge(
   )
 
   if (hre.network.tags.etherscan) {
+    await helpers.etherscan.verify(FrostWallets)
+    await helpers.etherscan.verify(FrostBridge)
     await helpers.etherscan.verify(Deposit)
     await helpers.etherscan.verify(DepositSweep)
     await helpers.etherscan.verify(Redemption)
