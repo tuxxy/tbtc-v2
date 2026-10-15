@@ -3,6 +3,7 @@ pragma solidity 0.8.17;
 
 import "./FrostRedemptionState.sol";
 import "./IFrostFundingBridge.sol";
+import "./FrostCancellationCertificate.sol";
 
 /// @notice Explicit ABI for the Bridge's separately linked FROST entrypoints.
 interface IFrostBridge is IFrostFundingBridge {
@@ -38,6 +39,25 @@ interface IFrostBridge is IFrostFundingBridge {
     function reserveFrostRedemption(
         FrostRedemptionState.ReservationProposal calldata proposal
     ) external returns (bytes32);
+
+    function submitFrostRedemptionProof(
+        bytes32 reservationId,
+        BitcoinTx.Info calldata transaction,
+        BitcoinTx.Proof calldata proof
+    ) external;
+
+    function authorizeFrostCancellation(
+        FrostCancellationCertificate.Authorization calldata authorization,
+        BitcoinTx.Info calldata transaction,
+        uint16[] calldata seats,
+        bytes calldata signatures
+    ) external;
+
+    function submitFrostCancellationProof(
+        bytes32 reservationId,
+        BitcoinTx.Info calldata transaction,
+        BitcoinTx.Proof calldata proof
+    ) external;
 
     function notifyFrostRedemptionTimeout(bytes32 requestId) external;
 
