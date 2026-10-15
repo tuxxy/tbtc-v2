@@ -47,12 +47,24 @@ func main() {
 	result["inputVector"] = "0x" + hex.EncodeToString(plain[4:4+vinSize])
 	result["outputVector"] = "0x" + hex.EncodeToString(plain[4+vinSize:len(plain)-4])
 	result["locktime"] = "0x" + hex.EncodeToString(plain[len(plain)-4:])
-	if input.Leaf != "" {
+	if input.Leaf != "" || input.PrevScript != "" || input.Value != 0 {
 		if len(tx.TxIn) != 1 || input.Value <= 0 {
 			panic("single-input positive-value test boundary")
 		}
+		if input.PrevScript == "" {
+			panic("previous output script required")
+		}
 		fetcher := txscript.NewCannedPrevOutputFetcher(decode(input.PrevScript), input.Value)
-		digest, err := txscript.CalcTapscriptSignaturehash(txscript.NewTxSigHashes(tx, fetcher), txscript.SigHashDefault, tx, 0, fetcher, txscript.NewBaseTapLeaf(decode(input.Leaf)))
+		hashes := txscript.NewTxSigHashes(tx, fetcher)
+		var digest []byte
+		var err error
+		if input.Leaf != "" {
+			digest, err = txscript.CalcTapscriptSignaturehash(hashes, txscript.SigHashDefault, tx, 0, fetcher, txscript.NewBaseTapLeaf(decode(input.Leaf)))
+			result["spendType"] = "script-path"
+		} else {
+			digest, err = txscript.CalcTaprootSignatureHash(hashes, txscript.SigHashDefault, tx, 0, fetcher)
+			result["spendType"] = "key-path"
+		}
 		if err != nil {
 			panic(err)
 		}
