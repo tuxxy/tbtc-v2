@@ -16,7 +16,8 @@ library FrostRedemptionLedger {
         Reserved,
         TimeoutPending,
         Paid,
-        Refunded
+        Refunded,
+        Refundable
     }
 
     struct Request {
@@ -48,7 +49,8 @@ library FrostRedemptionLedger {
         Paid,
         Cancelled,
         TimeoutPending,
-        Quarantined
+        Quarantined,
+        ConflictResolved
     }
 
     struct Intent {
@@ -71,6 +73,13 @@ library FrostRedemptionLedger {
         bytes cancellationSignatures;
         uint64 reservedNet;
         uint64 cancellationValidUntilBlock;
+        // Append-only proof resolution archive; original/cancellation records remain.
+        bytes32 sweepResolutionHash;
+        uint64 sweepResolutionBlock;
+        uint64 sweepResolutionValidUntilBlock;
+        uint16[] sweepResolutionSeats;
+        bytes32 sweepResolutionSignaturesHash;
+        bytes32 sweepResolutionAuthorizationHash;
     }
 
     event FrostReservationAdmitted(
@@ -360,6 +369,102 @@ library FrostRedemptionLedger {
                 pending.gross
             );
         }
+    }
+
+    event FrostReservationResolvedBySweep(
+        bytes32 indexed reservationId,
+        bytes32 indexed transactionHash
+    );
+
+    /// @dev Only the qualified sweep consumer calls this after proving and
+    /// replacing the captured main. Unspent non-main reservation inputs remain
+    /// recognized custody; a Bitcoin conflict invalidates the entire payment.
+    /// Sweep fees come exclusively from new deposits under their captured caps.
+    /// Refunds become individually collectible; full escrow/liability remains
+    /// held until collection. No redemption escrow or unused fee budget is burned.
+    function resolveSweep(
+        Storage storage self,
+        FrostCustody.Storage storage custody,
+        Bank bank,
+        bytes32 id,
+        bytes32 transactionHash
+    ) internal {
+        Intent storage intent = self.intents[id];
+        FrostCustody.Wallet storage wallet = custody.wallets[
+            intent.certificate.walletId
+        ];
+        require(
+            unresolved(intent) &&
+                wallet.activeReservation == id &&
+                intent.sweepResolutionHash == transactionHash &&
+                transactionHash != bytes32(0) &&
+                wallet.mainOutpoint == outpointKey(transactionHash, 0),
+            "FROST sweep resolution state"
+        );
+        intent.state = IntentState.ConflictResolved;
+        for (uint256 i = 0; i < intent.requestIds.length; i++) {
+            Request storage pending = self.requests[intent.requestIds[i]];
+            require(
+                pending.reservationId == id &&
+                    (pending.state == State.Reserved ||
+                        pending.state == State.TimeoutPending),
+                "FROST sweep resolution request"
+            );
+            // Keep the complete Bank escrow and conservative pending liability
+            // until the bounded per-request claim actually pays the redeemer.
+            pending.state = State.Refundable;
+        }
+        wallet.activeReservation = bytes32(0);
+        wallet.cancellationExposure = 0;
+        wallet.stateVersion++;
+        require(
+            wallet.value >= self.netLiability[intent.certificate.walletId],
+            "FROST remaining custody liabilities"
+        );
+        for (uint256 i = 0; i < intent.requestIds.length; i++) {
+            Request storage pending = self.requests[intent.requestIds[i]];
+            emit FrostRedemptionRefundAvailable(
+                intent.requestIds[i],
+                pending.redeemer,
+                pending.gross
+            );
+        }
+        if (intent.cancellationFee > 0)
+            bank.transferBalance(
+                intent.cancellationSponsor,
+                intent.cancellationFee
+            );
+        emit FrostReservationResolvedBySweep(id, transactionHash);
+    }
+
+    event FrostRedemptionRefundAvailable(
+        bytes32 indexed requestId,
+        address redeemer,
+        uint64 gross
+    );
+
+    /// @dev Permissionless collection always credits the captured redeemer.
+    /// No expiry or off-chain assertion can make a reserved request refundable.
+    function refundResolved(
+        Storage storage self,
+        Bank bank,
+        bytes32 id
+    ) internal {
+        Request storage pending = self.requests[id];
+        require(
+            pending.state == State.Refundable &&
+                pending.reservationId != bytes32(0) &&
+                self.intents[pending.reservationId].state ==
+                IntentState.ConflictResolved,
+            "FROST resolved refund state"
+        );
+        pending.state = State.Refunded;
+        self.escrow[pending.walletId] -= pending.gross;
+        self.netLiability[pending.walletId] -=
+            pending.gross -
+            pending.treasuryFee;
+        bank.transferBalance(pending.redeemer, pending.gross);
+        emit FrostRedemptionRefunded(id, pending.redeemer, pending.gross);
     }
 
     function replaceCustody(

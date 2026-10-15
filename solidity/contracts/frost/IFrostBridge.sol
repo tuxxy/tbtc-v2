@@ -7,6 +7,12 @@ import "./FrostCancellationCertificate.sol";
 
 /// @notice Explicit ABI for the Bridge's separately linked FROST entrypoints.
 interface IFrostBridge is IFrostFundingBridge {
+    function refundResolvedFrostRedemption(bytes32 requestId) external;
+
+    function submitFrostSweepResolutionProof(
+        FrostDepositSweep.Resolution calldata resolution
+    ) external;
+
     function quarantineFrostWallet(
         bytes32 walletId,
         uint64 expectedStateVersion,
