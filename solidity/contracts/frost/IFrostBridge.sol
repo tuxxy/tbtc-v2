@@ -4,9 +4,35 @@ pragma solidity 0.8.17;
 import "./FrostRedemptionState.sol";
 import "./IFrostFundingBridge.sol";
 import "./FrostCancellationCertificate.sol";
+import "./FrostCancellationHistory.sol";
 
 /// @notice Explicit ABI for the Bridge's separately linked FROST entrypoints.
 interface IFrostBridge is IFrostFundingBridge {
+    function frostCancellationWinner(bytes32 reservationId)
+        external
+        view
+        returns (bytes32);
+
+    function frostCancellationCount(bytes32 reservationId)
+        external
+        view
+        returns (uint256);
+
+    function frostCancellationHash(bytes32 reservationId, uint256 index)
+        external
+        view
+        returns (bytes32);
+
+    function frostCancellationAlternative(
+        bytes32 reservationId,
+        bytes32 transactionHash
+    ) external view returns (FrostCancellationHistory.Record memory);
+
+    function claimFrostCancellationBudget(
+        bytes32 reservationId,
+        bytes32 transactionHash
+    ) external;
+
     function refundResolvedFrostRedemption(bytes32 requestId) external;
 
     function submitFrostSweepResolutionProof(

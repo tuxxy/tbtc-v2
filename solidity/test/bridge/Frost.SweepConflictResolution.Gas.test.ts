@@ -122,7 +122,7 @@ const CANCELLATION_TYPE =
   "tuple(bytes32 reservationId,bytes32 snapshot,bytes32 transactionHash,uint64 fee,uint64 validUntilBlock)"
 
 // Run ONLY this one witness, --no-compile, against the parent-selected artifacts.
-// Source may already use hash archives while the selected build retains full bytes.
+// Requires the parent-confirmed hash-archive, pull-refund and A4 history build.
 describe("C-04 joint maximum sweep resolution gas (synthetic SPV component)", function jointMaximum() {
   this.timeout(170000)
   it("measures 64 public refunds + 128 sweep inputs + 100 distinct operator signatures under the transaction cap", async () => {
@@ -313,7 +313,7 @@ describe("C-04 joint maximum sweep resolution gas (synthetic SPV component)", fu
         )
       )
       await frost.requestFrostRedemption(ID, SCRIPT, 3000, refundRecipients[i])
-      requests.push({ id, value: 2900, script: SCRIPT })
+      requests.push({ id, value: 2950, script: SCRIPT })
     }
     const custody = await frost.frostWalletCustody(ID)
     const p = await reservationProposal({
@@ -328,8 +328,8 @@ describe("C-04 joint maximum sweep resolution gas (synthetic SPV component)", fu
       validUntilBlock: (await ethers.provider.getBlockNumber()) + 1000,
       inputs: [{ txHash: mainHash, txOutputIndex: 0, txOutputValue: 999000 }],
       requests,
-      fee: 4480,
-      maximumFee: 10000,
+      fee: 1280,
+      maximumFee: 2000,
       operators,
     })
     p.seats = seats
@@ -382,11 +382,114 @@ describe("C-04 joint maximum sweep resolution gas (synthetic SPV component)", fu
         ),
         { gasLimit: TX_CAP }
       )
+    const originalIntent = await frost.frostReservation(id)
+    const firstAlternative = await frost.frostCancellationAlternative(
+      id,
+      cancelAuthorization.transactionHash
+    )
+    const metadata = (approval: any) => [
+      approval.transactionHash,
+      approval.snapshot,
+      approval.fee,
+      approval.sponsor,
+      approval.admittedBlock,
+      approval.validUntilBlock,
+      approval.seats,
+      approval.signatures,
+    ]
+    const secondTx = {
+      version: "0x02000000",
+      inputVector: `0x01${entry(mainHash)}`,
+      outputVector: `0x01${output(997500)}`,
+      locktime: "0x00000000",
+    }
+    const secondResult = await validator.validateCancellation(
+      secondTx,
+      Q,
+      p.inputs
+    )
+    const secondAuthorization = {
+      reservationId: id,
+      snapshot: secondResult.snapshot,
+      transactionHash: txHash(secondTx),
+      fee: 1500,
+      validUntilBlock: (await ethers.provider.getBlockNumber()) + 1000,
+    }
+    expect(originalIntent.certificate.maximumFee).eq(2000)
+    const ownerBeforeAdditional = await bank.balanceOf(owner.address)
+    expect(await bank.allowance(owner.address, bridge.address)).eq(0)
+    await bank.approveBalance(bridge.address, 1500)
+    const secondSignatures = await sign(
+      "tbtc-v2/frost-reservation-cancellation/v1",
+      CANCELLATION_TYPE,
+      secondAuthorization
+    )
+    expect(ethers.utils.arrayify(secondSignatures).length).eq(6500)
+    const additionalAdmission = await (
+      await frost.authorizeFrostCancellation(
+        secondAuthorization,
+        secondTx,
+        seats,
+        secondSignatures,
+        { gasLimit: TX_CAP }
+      )
+    ).wait()
+    expect(additionalAdmission.status).eq(1)
+    expect(additionalAdmission.gasUsed.lt(TX_CAP)).eq(true)
+    expect(await bank.balanceOf(owner.address)).eq(
+      ownerBeforeAdditional.sub(1500)
+    )
+    expect(await bank.balanceOf(bridge.address)).eq(194500)
+    expect(await bank.allowance(owner.address, bridge.address)).eq(0)
+    expect(await frost.frostReservation(id)).deep.eq(originalIntent)
+    expect(
+      await frost.frostCancellationAlternative(
+        id,
+        cancelAuthorization.transactionHash
+      )
+    ).deep.eq(firstAlternative)
+    expect(await frost.frostCancellationCount(id)).eq(2)
+    expect(await frost.frostCancellationHash(id, 0)).eq(
+      cancelAuthorization.transactionHash
+    )
+    expect(await frost.frostCancellationHash(id, 1)).eq(
+      secondAuthorization.transactionHash
+    )
+    const secondAlternative = await frost.frostCancellationAlternative(
+      id,
+      secondAuthorization.transactionHash
+    )
+    expect(secondAlternative.transactionHash).eq(
+      secondAuthorization.transactionHash
+    )
+    expect(secondAlternative.snapshot).eq(secondResult.snapshot)
+    expect(secondAlternative.fee).eq(1500)
+    expect(secondAlternative.sponsor).eq(owner.address)
+    expect(secondAlternative.admittedBlock).eq(additionalAdmission.blockNumber)
+    expect(secondAlternative.validUntilBlock).eq(
+      secondAuthorization.validUntilBlock
+    )
+    expect(secondAlternative.seats).deep.eq(seats)
+    expect(secondAlternative.signatures).eq(secondSignatures)
+    expect(secondAlternative.budgetSettled).eq(false)
+    console.log(
+      "A4_MAX_ADDITIONAL_ADMISSION_GAS",
+      JSON.stringify({
+        route: ROUTE,
+        fee: 1500,
+        independentSponsor: owner.address,
+        certificateSeats: 100,
+        certificateBytes: 6500,
+        gasUsed: additionalAdmission.gasUsed.toString(),
+        gasCap: TX_CAP,
+        transactionHash: additionalAdmission.transactionHash,
+      })
+    )
     console.log(
       "A3_MAX_SETUP",
       JSON.stringify({
         phase:
-          "64 requests and 100-seat reservation/cancellation publicly admitted",
+          "64 requests and 100-seat reservation/two cancellations publicly admitted",
       })
     )
     const deposits = []
@@ -508,7 +611,8 @@ describe("C-04 joint maximum sweep resolution gas (synthetic SPV component)", fu
         distinctNewBankCreditRecipients: ROUTE === "bank" ? 127 : 1,
         distinctNewTokenRecipients: ROUTE === "vault" ? 127 : 0,
         distinctRefundRecipients: 64,
-        cancellationBudget: 1000,
+        cancellationBudgets: [1000, 1500],
+        additionalAdmissionGas: additionalAdmission.gasUsed.toString(),
         artifactArchive,
         gasCap: TX_CAP,
         accepted: receipt?.status === 1,
@@ -581,7 +685,22 @@ describe("C-04 joint maximum sweep resolution gas (synthetic SPV component)", fu
     expect(after.mainOutpoint).eq(outpoint(txHash(transaction)))
     expect(after.activeReservation).eq(ethers.constants.HashZero)
     // This receipt measures proof only. Refund transactions are separately bounded.
-    expect(await bank.balanceOf(bridge.address)).eq(192000)
+    expect(await bank.balanceOf(bridge.address)).eq(193500)
+    const firstAfterProof = await frost.frostCancellationAlternative(
+      id,
+      cancelAuthorization.transactionHash
+    )
+    expect(firstAfterProof.budgetSettled).eq(true)
+    expect(metadata(firstAfterProof)).deep.eq(metadata(firstAlternative))
+    expect(
+      await frost.frostCancellationAlternative(
+        id,
+        secondAuthorization.transactionHash
+      )
+    ).deep.eq(secondAlternative)
+    expect(await frost.frostCancellationWinner(id)).eq(
+      ethers.constants.HashZero
+    )
     const heldEscrow = await frost.frostRedemptionEscrow(ID)
     expect(heldEscrow[0]).eq(192000)
     expect(heldEscrow[1]).eq(190080)
@@ -608,6 +727,16 @@ describe("C-04 joint maximum sweep resolution gas (synthetic SPV component)", fu
     }
     const [, , claimant] = await ethers.getSigners()
     const claimantBalance = await bank.balanceOf(claimant.address)
+    const heldBeforeFirstClaim = await bank.balanceOf(bridge.address)
+    await expect(
+      frost
+        .connect(claimant)
+        .claimFrostCancellationBudget(id, cancelAuthorization.transactionHash)
+    ).revertedWith("FROST cancellation budget settled")
+    expect(await bank.balanceOf(bridge.address)).eq(heldBeforeFirstClaim)
+    expect(await bank.balanceOf(owner.address)).eq(
+      ownerBeforeAdditional.sub(1500)
+    )
     let maximumClaimGas = ethers.BigNumber.from(0)
     const claimGas = []
     for (let i = 0; i < requests.length; i++) {
@@ -625,7 +754,50 @@ describe("C-04 joint maximum sweep resolution gas (synthetic SPV component)", fu
       const remaining = await frost.frostRedemptionEscrow(ID)
       expect(remaining[0]).eq((63 - i) * 3000)
       expect(remaining[1]).eq((63 - i) * 2970)
+      expect(await bank.balanceOf(bridge.address)).eq((63 - i) * 3000 + 1500)
     }
+    expect(await bank.balanceOf(claimant.address)).eq(claimantBalance)
+    expect(await bank.balanceOf(bridge.address)).eq(1500)
+    expect(await bank.balanceOf(owner.address)).eq(
+      ownerBeforeAdditional.sub(1500)
+    )
+    expect(
+      await frost.frostCancellationAlternative(
+        id,
+        secondAuthorization.transactionHash
+      )
+    ).deep.eq(secondAlternative)
+    const budgetClaim = await (
+      await frost
+        .connect(claimant)
+        .claimFrostCancellationBudget(id, secondAuthorization.transactionHash, {
+          gasLimit: TX_CAP,
+        })
+    ).wait()
+    expect(budgetClaim.status).eq(1)
+    expect(budgetClaim.gasUsed.lt(TX_CAP)).eq(true)
+    expect(await bank.balanceOf(owner.address)).eq(ownerBeforeAdditional)
+    expect(await bank.balanceOf(claimant.address)).eq(claimantBalance)
+    expect(await bank.balanceOf(bridge.address)).eq(0)
+    expect(await bank.balanceOf(treasury.address)).eq(137000)
+    const secondAfterClaim = await frost.frostCancellationAlternative(
+      id,
+      secondAuthorization.transactionHash
+    )
+    expect(secondAfterClaim.budgetSettled).eq(true)
+    expect(metadata(secondAfterClaim)).deep.eq(metadata(secondAlternative))
+    expect(
+      await frost.frostCancellationAlternative(
+        id,
+        cancelAuthorization.transactionHash
+      )
+    ).deep.eq(firstAfterProof)
+    await expect(
+      frost
+        .connect(claimant)
+        .claimFrostCancellationBudget(id, secondAuthorization.transactionHash)
+    ).revertedWith("FROST cancellation budget settled")
+    expect(await bank.balanceOf(owner.address)).eq(ownerBeforeAdditional)
     expect(await bank.balanceOf(claimant.address)).eq(claimantBalance)
     expect(await bank.balanceOf(bridge.address)).eq(0)
     expect(await frost.frostWalletCustody(ID)).deep.eq(after)
@@ -639,6 +811,8 @@ describe("C-04 joint maximum sweep resolution gas (synthetic SPV component)", fu
         route: ROUTE,
         claims: 64,
         maxClaimGas: maximumClaimGas.toString(),
+        budgetClaimGas: budgetClaim.gasUsed.toString(),
+        additionalAdmissionGas: additionalAdmission.gasUsed.toString(),
         proofGas: receipt.gasUsed.toString(),
         gasCap: TX_CAP,
         claimGas,

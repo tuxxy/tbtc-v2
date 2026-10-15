@@ -2,6 +2,7 @@
 pragma solidity 0.8.17;
 
 import "./FrostRedemptionLedger.sol";
+import "./FrostCancellationHistory.sol";
 
 library FrostRedemptionState {
     struct ReservationProposal {
@@ -39,5 +40,6 @@ library FrostRedemptionState {
         Configuration configuration;
         mapping(bytes32 => RequestPolicy) requestPolicies;
         mapping(bytes32 => mapping(uint64 => QuarantineRecord)) quarantines;
+        FrostCancellationHistory.Storage cancellationHistory;
     }
 }

@@ -39,6 +39,7 @@ export type CoreSettlementOptions = {
   outputDirectory: string
   digestBinary?: string
   competingRaw?: string
+  replaceRaw?: string
 }
 const CORE = "/private/tmp/k04-tools/bitcoin-29.0/bin"
 const CORE_SHA =
@@ -297,9 +298,53 @@ export async function runCoreSettlement(options: CoreSettlementOptions) {
     )}${unhex(transaction.outputVector)}0140${signature.toString("hex")}${unhex(
       transaction.locktime
     )}`
+    let replacement:
+      | {
+          previousTxid: string
+          replacementTxid: string
+          previousAdmission: any
+          previousRemoved: boolean
+        }
+      | undefined
+    if (options.replaceRaw) {
+      const previous = rpc("decoderawtransaction", [options.replaceRaw])
+      assert(
+        previous.vin.some(
+          (vin: any) =>
+            vin.txid === inputTxid && vin.vout === input.txOutputIndex
+        ),
+        "replacement must conflict on captured custody"
+      )
+      assert.notEqual(previous.txid, computed.txidRPC)
+      const previousAdmission = rpc("testmempoolaccept", [
+        [options.replaceRaw],
+      ])[0]
+      assert.equal(
+        previousAdmission.allowed,
+        true,
+        JSON.stringify(previousAdmission)
+      )
+      rpc("sendrawtransaction", [options.replaceRaw])
+      assert(rpc("getrawmempool").includes(previous.txid))
+      replacement = {
+        previousTxid: previous.txid,
+        replacementTxid: computed.txidRPC,
+        previousAdmission,
+        previousRemoved: false,
+      }
+    }
     const mempool = rpc("testmempoolaccept", [[raw]])[0]
     assert.equal(mempool.allowed, true, JSON.stringify(mempool))
     const settlementTxid = rpc("sendrawtransaction", [raw])
+    if (replacement) {
+      const entries = rpc("getrawmempool")
+      assert(
+        !entries.includes(replacement.previousTxid),
+        "higher-fee replacement must remove old mempool transaction"
+      )
+      assert(entries.includes(settlementTxid))
+      replacement.previousRemoved = true
+    }
     assert.equal(
       settlementTxid,
       computed.txidRPC,
@@ -356,6 +401,7 @@ export async function runCoreSettlement(options: CoreSettlementOptions) {
       mempool,
       proof,
       conflictRejection,
+      replacement,
       commands,
       limits: {
         outerSeconds: 180,
