@@ -150,6 +150,61 @@ library FrostBridge {
                         self.frostFunding.deposits[abi.decode(args, (bytes32))]
                     )
                 );
+        } else if (selector == IFrostBridge.frostCancellationWinner.selector) {
+            bytes32 id = abi.decode(args, (bytes32));
+            bytes32 winner = self
+                .frostRedemptions
+                .cancellationHistory
+                .histories[id]
+                .winningHash;
+            FrostRedemptionLedger.Intent storage intent = self
+                .frostRedemptions
+                .ledger
+                .intents[id];
+            if (
+                winner == bytes32(0) &&
+                intent.state == FrostRedemptionLedger.IntentState.Cancelled
+            ) winner = intent.cancellationHash;
+            return abi.encode(winner);
+        } else if (selector == IFrostBridge.frostCancellationCount.selector) {
+            bytes32 id = abi.decode(args, (bytes32));
+            return
+                abi.encode(
+                    FrostCancellationHistory.count(
+                        self.frostRedemptions.cancellationHistory,
+                        self.frostRedemptions.ledger.intents[id],
+                        id
+                    )
+                );
+        } else if (selector == IFrostBridge.frostCancellationHash.selector) {
+            (bytes32 id, uint256 index) = abi.decode(args, (bytes32, uint256));
+            return
+                abi.encode(
+                    FrostCancellationHistory.at(
+                        self.frostRedemptions.cancellationHistory,
+                        self.frostRedemptions.ledger.intents[id],
+                        id,
+                        index
+                    )
+                );
+        } else if (
+            selector == IFrostBridge.frostCancellationAlternative.selector
+        ) {
+            (bytes32 id, bytes32 hash) = abi.decode(args, (bytes32, bytes32));
+            return
+                abi.encode(
+                    FrostCancellationHistory.get(
+                        self.frostRedemptions.cancellationHistory,
+                        self.frostRedemptions.ledger.intents[id],
+                        id,
+                        hash
+                    )
+                );
+        } else if (
+            selector == IFrostBridge.claimFrostCancellationBudget.selector
+        ) {
+            (bytes32 id, bytes32 hash) = abi.decode(args, (bytes32, bytes32));
+            FrostRedemptionSettlement.claimCancellationBudget(self, id, hash);
         } else if (
             selector == IFrostBridge.refundResolvedFrostRedemption.selector
         ) {

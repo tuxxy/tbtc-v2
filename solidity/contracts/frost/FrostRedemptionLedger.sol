@@ -336,6 +336,34 @@ library FrostRedemptionLedger {
                 intent.cancellationFee > 0,
             "FROST cancellation not authorized"
         );
+        cancelSelected(
+            self,
+            custody,
+            bank,
+            id,
+            intent.cancellationHash,
+            intent.cancellationFee,
+            changeValue,
+            changeIndex
+        );
+    }
+
+    /// @dev Caller proves and authenticates the selected immutable alternative.
+    function cancelSelected(
+        Storage storage self,
+        FrostCustody.Storage storage custody,
+        Bank bank,
+        bytes32 id,
+        bytes32 transactionHash,
+        uint64 fee,
+        uint64 changeValue,
+        uint32 changeIndex
+    ) internal {
+        Intent storage intent = self.intents[id];
+        require(
+            unresolved(intent) && transactionHash != bytes32(0) && fee > 0,
+            "FROST cancellation not authorized"
+        );
         intent.state = IntentState.Cancelled;
         for (uint256 i = 0; i < intent.requestIds.length; i++) {
             Request storage pending = self.requests[intent.requestIds[i]];
@@ -355,11 +383,11 @@ library FrostRedemptionLedger {
             self,
             custody,
             intent,
-            intent.cancellationHash,
+            transactionHash,
             changeValue,
             changeIndex
         );
-        bank.decreaseBalance(intent.cancellationFee);
+        bank.decreaseBalance(fee);
         for (uint256 i = 0; i < intent.requestIds.length; i++) {
             Request storage pending = self.requests[intent.requestIds[i]];
             bank.transferBalance(pending.redeemer, pending.gross);

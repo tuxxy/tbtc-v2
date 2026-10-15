@@ -6,6 +6,7 @@ import "../bridge/BitcoinTx.sol";
 import "./FrostFundingState.sol";
 import "./FrostCustody.sol";
 import "./FrostSweepResolutionCertificate.sol";
+import "./FrostCancellationHistory.sol";
 import {BTCUtils} from "@keep-network/bitcoin-spv-sol/contracts/BTCUtils.sol";
 import {BytesLib} from "@keep-network/bitcoin-spv-sol/contracts/BytesLib.sol";
 
@@ -289,6 +290,19 @@ library FrostDepositSweep {
         );
         if (resolutionId != bytes32(0)) {
             bridge.frostCustody.wallets[request.walletId].mainOutpoint = newKey;
+            if (
+                bridge
+                    .frostRedemptions
+                    .ledger
+                    .intents[resolutionId]
+                    .cancellationFee > 0
+            ) {
+                FrostCancellationHistory.recordFirstReturn(
+                    bridge.frostRedemptions.cancellationHistory,
+                    bridge.frostRedemptions.ledger.intents[resolutionId],
+                    resolutionId
+                );
+            }
             FrostRedemptionLedger.resolveSweep(
                 bridge.frostRedemptions.ledger,
                 bridge.frostCustody,

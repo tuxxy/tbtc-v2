@@ -4,6 +4,8 @@ pragma solidity 0.8.17;
 import "../bridge/BridgeState.sol";
 import "./FrostRedemptionTransaction.sol";
 import "./FrostCancellationCertificate.sol";
+import "./FrostCancellationHistory.sol";
+import "./FrostCancellationAdmissions.sol";
 
 /// @notice Fixed linked proof and cancellation consumer; Bridge storage is shared.
 library FrostRedemptionSettlement {
@@ -29,22 +31,6 @@ library FrostRedemptionSettlement {
 
     function leave(BridgeState.Storage storage self) private {
         self.frostFunding.entered = false;
-    }
-
-    function checkWindow(BridgeState.Storage storage self, uint64 validUntil)
-        private
-        view
-    {
-        require(
-            validUntil >= block.number &&
-                uint256(validUntil) <=
-                block.number +
-                    self
-                        .frostRedemptions
-                        .configuration
-                        .maximumCertificateBlocks,
-            "FROST certificate window"
-        );
     }
 
     function paymentRequests(
@@ -91,6 +77,18 @@ library FrostRedemptionSettlement {
         leave(self);
     }
 
+    function claimCancellationBudget(
+        BridgeState.Storage storage self,
+        bytes32 id,
+        bytes32 transactionHash
+    ) external {
+        FrostCancellationAdmissions.claimCancellationBudget(
+            self,
+            id,
+            transactionHash
+        );
+    }
+
     function submitPayment(
         BridgeState.Storage storage self,
         bytes32 id,
@@ -126,6 +124,13 @@ library FrostRedemptionSettlement {
             "FROST payment proof identity"
         );
         consumeSharedInputs(self, intent);
+        if (intent.cancellationFee > 0) {
+            FrostCancellationHistory.recordFirstReturn(
+                self.frostRedemptions.cancellationHistory,
+                intent,
+                id
+            );
+        }
         FrostRedemptionLedger.pay(
             self.frostRedemptions.ledger,
             self.frostCustody,
@@ -146,79 +151,13 @@ library FrostRedemptionSettlement {
         uint16[] calldata seats,
         bytes calldata signatures
     ) external {
-        enter(self);
-        FrostRedemptionLedger.Intent storage intent = self
-            .frostRedemptions
-            .ledger
-            .intents[authorization.reservationId];
-        require(
-            FrostRedemptionLedger.unresolved(intent) &&
-                intent.cancellationHash == bytes32(0),
-            "FROST cancellation intent state"
+        FrostCancellationAdmissions.authorizeCancellation(
+            self,
+            authorization,
+            transaction,
+            seats,
+            signatures
         );
-        FrostWallets.Wallet storage wallet = self.frost.wallets[
-            bytes20(intent.certificate.walletId)
-        ];
-        checkWindow(self, authorization.validUntilBlock);
-        FrostRedemptionTransaction.Result
-            memory result = FrostRedemptionTransaction.validateCancellation(
-                transaction,
-                wallet.descriptor.outputKey,
-                intent.inputs
-            );
-        FrostRedemptionTransaction.validateFees(
-            result,
-            intent.certificate.minimumFee,
-            intent.certificate.maximumFee,
-            intent.certificate.maximumSatPerVByte
-        );
-        require(
-            result.txHash == authorization.transactionHash &&
-                result.snapshot == authorization.snapshot &&
-                result.fee == authorization.fee,
-            "FROST cancellation changed intent"
-        );
-        self
-            .frostCustody
-            .wallets[intent.certificate.walletId]
-            .cancellationExposure = FrostRedemptionLedger
-            .cancellationExposureFor(
-                self.frostRedemptions.ledger,
-                self.frostCustody,
-                authorization.reservationId,
-                result.fee
-            );
-        require(
-            FrostCancellationCertificate.validate(
-                address(this),
-                wallet.descriptor,
-                authorization,
-                seats,
-                signatures
-            ),
-            "FROST cancellation certificate"
-        );
-        require(
-            block.number <= type(uint64).max,
-            "FROST cancellation block overflow"
-        );
-        intent.cancellationHash = result.txHash;
-        intent.cancellationSnapshot = result.snapshot;
-        intent.cancellationFee = result.fee;
-        intent.cancellationSponsor = msg.sender;
-        intent.cancellationAdmittedBlock = uint64(block.number);
-        intent.cancellationValidUntilBlock = authorization.validUntilBlock;
-        for (uint256 i = 0; i < seats.length; i++)
-            intent.cancellationSeats.push(seats[i]);
-        intent.cancellationSignatures = signatures;
-        self.bank.transferBalanceFrom(msg.sender, address(this), result.fee);
-        emit FrostCancellationAuthorized(
-            authorization.reservationId,
-            result.txHash,
-            result.fee,
-            msg.sender
-        );
-        leave(self);
     }
 
     function submitCancellation(
@@ -246,10 +185,15 @@ library FrostRedemptionSettlement {
                 wallet.descriptor.outputKey,
                 intent.inputs
             );
+        FrostCancellationHistory.Record
+            memory selected = FrostCancellationHistory.get(
+                self.frostRedemptions.cancellationHistory,
+                intent,
+                id,
+                result.txHash
+            );
         require(
-            result.txHash == intent.cancellationHash &&
-                result.snapshot == intent.cancellationSnapshot &&
-                result.fee == intent.cancellationFee,
+            result.snapshot == selected.snapshot && result.fee == selected.fee,
             "FROST cancellation changed intent"
         );
         require(
@@ -257,11 +201,19 @@ library FrostRedemptionSettlement {
             "FROST cancellation proof identity"
         );
         consumeSharedInputs(self, intent);
-        FrostRedemptionLedger.cancel(
+        FrostCancellationHistory.recordWinner(
+            self.frostRedemptions.cancellationHistory,
+            intent,
+            id,
+            result.txHash
+        );
+        FrostRedemptionLedger.cancelSelected(
             self.frostRedemptions.ledger,
             self.frostCustody,
             self.bank,
             id,
+            result.txHash,
+            result.fee,
             result.changeValue,
             result.changeIndex
         );
