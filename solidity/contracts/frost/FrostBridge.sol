@@ -4,6 +4,7 @@ pragma solidity 0.8.17;
 import "../bridge/BridgeState.sol";
 import "./IFrostBridge.sol";
 import "./FrostWallets.sol";
+import "./FrostFundingConfiguration.sol";
 
 interface IFrostGovernance {
     function governance() external view returns (address);
@@ -19,7 +20,102 @@ library FrostBridge {
         require(input.length >= 4, "FROST selector");
         bytes4 selector = bytes4(input[:4]);
         bytes calldata args = input[4:];
-        if (selector == IFrostBridge.configureFrostRegistry.selector) {
+        if (selector == IFrostFundingBridge.configureFrostFunding.selector) {
+            require(
+                msg.sender == IFrostGovernance(address(this)).governance(),
+                "Caller is not governance"
+            );
+            (
+                address verifier,
+                bytes32 runtimeHash,
+                bytes32 record,
+                bytes32 genesis
+            ) = abi.decode(args, (address, bytes32, bytes32, bytes32));
+            FrostFundingConfiguration.install(
+                self.frostFunding,
+                verifier,
+                runtimeHash,
+                record,
+                genesis
+            );
+        } else if (
+            selector == IFrostFundingBridge.setFrostFundingGates.selector
+        ) {
+            require(
+                msg.sender == IFrostGovernance(address(this)).governance(),
+                "Caller is not governance"
+            );
+            (bool addressesEnabled, bool revealEnabled) = abi.decode(
+                args,
+                (bool, bool)
+            );
+            FrostFundingConfiguration.setGates(
+                self.frostFunding,
+                addressesEnabled,
+                revealEnabled
+            );
+        } else if (
+            selector == IFrostFundingBridge.frostDepositConstruction.selector
+        ) {
+            return
+                abi.encode(
+                    FrostDepositAdmission.construction(
+                        self,
+                        self.frostFunding,
+                        abi.decode(args, (FrostDepositProfile.Terms))
+                    )
+                );
+        } else if (
+            selector ==
+            IFrostFundingBridge.frostDepositRefundConstruction.selector
+        ) {
+            return
+                abi.encode(
+                    FrostDepositAdmission.refundConstruction(
+                        self.frostFunding,
+                        abi.decode(args, (bytes32))
+                    )
+                );
+        } else if (
+            selector == IFrostFundingBridge.frostDepositOutput.selector
+        ) {
+            return
+                abi.encode(
+                    FrostDepositAdmission.output(
+                        self,
+                        self.frostFunding,
+                        abi.decode(args, (FrostDepositProfile.Terms))
+                    )
+                );
+        } else if (
+            selector == IFrostFundingBridge.revealFrostDeposit.selector
+        ) {
+            (
+                FrostDepositProfile.Terms memory terms,
+                BitcoinTx.Info memory transaction,
+                uint32 index
+            ) = abi.decode(
+                    args,
+                    (FrostDepositProfile.Terms, BitcoinTx.Info, uint32)
+                );
+            return
+                abi.encode(
+                    FrostDepositAdmission.reveal(
+                        self,
+                        self.frostFunding,
+                        terms,
+                        transaction,
+                        index
+                    )
+                );
+        } else if (selector == IFrostFundingBridge.frostDeposit.selector) {
+            return
+                abi.encode(
+                    abi.encode(
+                        self.frostFunding.deposits[abi.decode(args, (bytes32))]
+                    )
+                );
+        } else if (selector == IFrostBridge.configureFrostRegistry.selector) {
             require(
                 msg.sender == IFrostGovernance(address(this)).governance(),
                 "Caller is not governance"

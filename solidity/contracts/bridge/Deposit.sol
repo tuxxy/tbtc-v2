@@ -317,13 +317,15 @@ library Deposit {
             )
             .hash256View();
 
-        DepositRequest storage deposit = self.deposits[
-            uint256(
-                keccak256(
-                    abi.encodePacked(fundingTxHash, reveal.fundingOutputIndex)
-                )
-            )
-        ];
+        bytes32 fundingKey = keccak256(
+            abi.encodePacked(fundingTxHash, reveal.fundingOutputIndex)
+        );
+        require(
+            self.frostFunding.deposits[fundingKey].revealedAt == 0 &&
+                self.frostCustody.outputs[fundingKey].walletId == bytes32(0),
+            "Funding outpoint claimed by FROST"
+        );
+        DepositRequest storage deposit = self.deposits[uint256(fundingKey)];
         require(deposit.revealedAt == 0, "Deposit already revealed");
 
         uint64 fundingOutputAmount = fundingOutput.extractValue();
