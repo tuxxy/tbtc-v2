@@ -132,6 +132,17 @@ library FrostBridge {
                 self.frostCustody,
                 abi.decode(args, (FrostDepositSweep.Sweep))
             );
+        } else if (
+            selector == IFrostBridge.submitFrostSweepResolutionProof.selector
+        ) {
+            require(
+                self.isSpvMaintainer[msg.sender],
+                "Caller is not SPV maintainer"
+            );
+            FrostDepositSweep.proveResolution(
+                self,
+                abi.decode(args, (FrostDepositSweep.Resolution))
+            );
         } else if (selector == IFrostFundingBridge.frostDeposit.selector) {
             return
                 abi.encode(
@@ -139,6 +150,13 @@ library FrostBridge {
                         self.frostFunding.deposits[abi.decode(args, (bytes32))]
                     )
                 );
+        } else if (
+            selector == IFrostBridge.refundResolvedFrostRedemption.selector
+        ) {
+            FrostRedemptionSettlement.refundResolved(
+                self,
+                abi.decode(args, (bytes32))
+            );
         } else if (
             selector == IFrostBridge.configureFrostRedemptions.selector
         ) {

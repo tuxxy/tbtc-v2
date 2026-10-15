@@ -8,6 +8,7 @@ import fs from "fs"
 import path from "path"
 import assert from "assert"
 import * as secp from "@noble/secp256k1"
+import { digestBinaryForRun } from "./frost-digest-builder"
 import {
   prepareEvidenceDirectory,
   reserveCorePort,
@@ -51,10 +52,9 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 export async function runCoreSettlement(options: CoreSettlementOptions) {
   const { coreWitness, transaction, input, outputDirectory } = options
-  const digestBinary =
-    options.digestBinary ||
-    process.env.FROST_C04_DIGEST_BINARY ||
-    "/private/tmp/c04-public-funding-20261014/frost-digest"
+  const digestBinary = digestBinaryForRun(
+    options.digestBinary || process.env.FROST_C04_DIGEST_BINARY
+  )
   assert.equal(
     sha(fs.readFileSync(path.join(CORE, "bitcoind"))).toString("hex"),
     CORE_SHA

@@ -79,6 +79,18 @@ library FrostRedemptionSettlement {
         }
     }
 
+    function refundResolved(BridgeState.Storage storage self, bytes32 requestId)
+        external
+    {
+        enter(self);
+        FrostRedemptionLedger.refundResolved(
+            self.frostRedemptions.ledger,
+            self.bank,
+            requestId
+        );
+        leave(self);
+    }
+
     function submitPayment(
         BridgeState.Storage storage self,
         bytes32 id,
