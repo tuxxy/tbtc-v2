@@ -5,6 +5,8 @@ import "../bridge/BridgeState.sol";
 import "./IFrostBridge.sol";
 import "./FrostWallets.sol";
 import "./FrostFundingConfiguration.sol";
+import "./FrostRedemptions.sol";
+import "./FrostRedemptionRequests.sol";
 
 interface IFrostGovernance {
     function governance() external view returns (address);
@@ -135,6 +137,125 @@ library FrostBridge {
                     abi.encode(
                         self.frostFunding.deposits[abi.decode(args, (bytes32))]
                     )
+                );
+        } else if (
+            selector == IFrostBridge.configureFrostRedemptions.selector
+        ) {
+            require(
+                msg.sender == IFrostGovernance(address(this)).governance(),
+                "Caller is not governance"
+            );
+            (
+                bytes32 genesis,
+                uint64 finalityBlocks,
+                uint64 maximumCertificateBlocks,
+                address watchtower,
+                bytes32 evidence
+            ) = abi.decode(args, (bytes32, uint64, uint64, address, bytes32));
+            FrostRedemptionRequests.configure(
+                self,
+                genesis,
+                finalityBlocks,
+                maximumCertificateBlocks,
+                watchtower,
+                evidence
+            );
+        } else if (
+            selector == IFrostBridge.setFrostRedemptionsEnabled.selector
+        ) {
+            require(
+                msg.sender == IFrostGovernance(address(this)).governance(),
+                "Caller is not governance"
+            );
+            FrostRedemptionRequests.setEnabled(self, abi.decode(args, (bool)));
+        } else if (selector == IFrostBridge.requestFrostRedemption.selector) {
+            (
+                bytes32 id,
+                bytes memory script,
+                uint64 gross,
+                address redeemer
+            ) = abi.decode(args, (bytes32, bytes, uint64, address));
+            return
+                abi.encode(
+                    FrostRedemptionRequests.request(
+                        self,
+                        id,
+                        script,
+                        gross,
+                        redeemer
+                    )
+                );
+        } else if (selector == IFrostBridge.quarantineFrostWallet.selector) {
+            require(
+                msg.sender == IFrostGovernance(address(this)).governance(),
+                "Caller is not governance"
+            );
+            (bytes32 id, uint64 version, bytes32 reason, bytes32 evidence) = abi
+                .decode(args, (bytes32, uint64, bytes32, bytes32));
+            FrostRedemptionRequests.quarantine(
+                self,
+                id,
+                version,
+                reason,
+                evidence
+            );
+        } else if (selector == IFrostBridge.frostWalletQuarantine.selector) {
+            (bytes32 id, uint64 version) = abi.decode(args, (bytes32, uint64));
+            return abi.encode(self.frostRedemptions.quarantines[id][version]);
+        } else if (selector == IFrostBridge.reserveFrostRedemption.selector) {
+            FrostRedemptionState.ReservationProposal memory proposal = abi
+                .decode(args, (FrostRedemptionState.ReservationProposal));
+            return abi.encode(FrostRedemptions.reserve(self, proposal));
+        } else if (
+            selector == IFrostBridge.notifyFrostRedemptionTimeout.selector
+        ) {
+            FrostRedemptionRequests.observeTimeout(
+                self,
+                abi.decode(args, (bytes32))
+            );
+        } else if (
+            selector == IFrostBridge.refundUnreservedFrostRedemption.selector
+        ) {
+            FrostRedemptionRequests.refundUnreserved(
+                self,
+                abi.decode(args, (bytes32))
+            );
+        } else if (
+            selector == IFrostBridge.frostRedemptionConfiguration.selector
+        ) {
+            return abi.encode(self.frostRedemptions.configuration);
+        } else if (selector == IFrostBridge.frostRedemptionRequest.selector) {
+            return
+                abi.encode(
+                    self.frostRedemptions.ledger.requests[
+                        abi.decode(args, (bytes32))
+                    ]
+                );
+        } else if (selector == IFrostBridge.frostRedemptionPolicy.selector) {
+            return
+                abi.encode(
+                    self.frostRedemptions.requestPolicies[
+                        abi.decode(args, (bytes32))
+                    ]
+                );
+        } else if (selector == IFrostBridge.frostReservation.selector) {
+            return
+                abi.encode(
+                    self.frostRedemptions.ledger.intents[
+                        abi.decode(args, (bytes32))
+                    ]
+                );
+        } else if (selector == IFrostBridge.frostWalletCustody.selector) {
+            return
+                abi.encode(
+                    self.frostCustody.wallets[abi.decode(args, (bytes32))]
+                );
+        } else if (selector == IFrostBridge.frostRedemptionEscrow.selector) {
+            bytes32 id = abi.decode(args, (bytes32));
+            return
+                abi.encode(
+                    self.frostRedemptions.ledger.escrow[id],
+                    self.frostRedemptions.ledger.netLiability[id]
                 );
         } else if (selector == IFrostBridge.configureFrostRegistry.selector) {
             require(
