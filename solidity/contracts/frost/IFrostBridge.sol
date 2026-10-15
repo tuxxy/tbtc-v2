@@ -1,9 +1,78 @@
 // SPDX-License-Identifier: GPL-3.0-only
 pragma solidity 0.8.17;
+
+import "./FrostRedemptionState.sol";
 import "./IFrostFundingBridge.sol";
 
 /// @notice Explicit ABI for the Bridge's separately linked FROST entrypoints.
 interface IFrostBridge is IFrostFundingBridge {
+    function quarantineFrostWallet(
+        bytes32 walletId,
+        uint64 expectedStateVersion,
+        bytes32 reasonHash,
+        bytes32 evidenceHash
+    ) external;
+
+    function frostWalletQuarantine(bytes32 walletId, uint64 stateVersion)
+        external
+        view
+        returns (FrostRedemptionState.QuarantineRecord memory);
+
+    function configureFrostRedemptions(
+        bytes32 genesis,
+        uint64 finalityBlocks,
+        uint64 maximumCertificateBlocks,
+        address watchtower,
+        bytes32 legacyTransitionEvidence
+    ) external;
+
+    function setFrostRedemptionsEnabled(bool enabled) external;
+
+    function requestFrostRedemption(
+        bytes32 walletId,
+        bytes calldata script,
+        uint64 gross,
+        address redeemer
+    ) external returns (bytes32);
+
+    function reserveFrostRedemption(
+        FrostRedemptionState.ReservationProposal calldata proposal
+    ) external returns (bytes32);
+
+    function notifyFrostRedemptionTimeout(bytes32 requestId) external;
+
+    function refundUnreservedFrostRedemption(bytes32 requestId) external;
+
+    function frostRedemptionConfiguration()
+        external
+        view
+        returns (FrostRedemptionState.Configuration memory);
+
+    function frostRedemptionRequest(bytes32 requestId)
+        external
+        view
+        returns (FrostRedemptionLedger.Request memory);
+
+    function frostRedemptionPolicy(bytes32 requestId)
+        external
+        view
+        returns (FrostRedemptionState.RequestPolicy memory);
+
+    function frostReservation(bytes32 reservationId)
+        external
+        view
+        returns (FrostRedemptionLedger.Intent memory);
+
+    function frostWalletCustody(bytes32 walletId)
+        external
+        view
+        returns (FrostCustody.Wallet memory);
+
+    function frostRedemptionEscrow(bytes32 walletId)
+        external
+        view
+        returns (uint64 gross, uint64 netLiability);
+
     function configureFrostRegistry(address registry) external;
 
     function setFrostRequestsEnabled(bool enabled) external;
