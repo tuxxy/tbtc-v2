@@ -33,14 +33,14 @@ export function prepareEvidenceDirectory(directory: string): string {
   )
   const retained = Object.entries(process.env).some(
     ([name, root]) =>
-      name.startsWith("FROST_C05_") &&
+      (name.startsWith("FROST_C04_") || name.startsWith("FROST_C05_")) &&
       name.endsWith("_EVIDENCE") &&
       !!root &&
       within(target, canonicalDirectory(root))
   )
   assert(
     temporary || retained,
-    "retained evidence requires an explicit FROST_C05_*_EVIDENCE environment root"
+    "retained evidence requires an explicit FROST_C04_*_EVIDENCE environment root"
   )
   fs.mkdirSync(directory, { recursive: true })
   return directory
@@ -50,7 +50,7 @@ export function evidenceDirectory(label: string, retained?: string): string {
   if (retained) {
     return prepareEvidenceDirectory(retained)
   }
-  return fs.mkdtempSync(path.join(os.tmpdir(), `c05-${label}-`))
+  return fs.mkdtempSync(path.join(os.tmpdir(), `c04-${label}-`))
 }
 
 export async function reserveCorePort(): Promise<{

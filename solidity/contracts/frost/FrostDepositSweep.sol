@@ -5,6 +5,8 @@ import "../bridge/BridgeState.sol";
 import "../bridge/BitcoinTx.sol";
 import "./FrostFundingState.sol";
 import "./FrostCustody.sol";
+import "./FrostSweepResolutionCertificate.sol";
+import "./FrostCancellationHistory.sol";
 import {BTCUtils} from "@keep-network/bitcoin-spv-sol/contracts/BTCUtils.sol";
 import {BytesLib} from "@keep-network/bitcoin-spv-sol/contracts/BytesLib.sol";
 
@@ -34,6 +36,24 @@ library FrostDepositSweep {
         address vault;
     }
 
+    struct Resolution {
+        Sweep sweep;
+        FrostSweepResolutionCertificate.Authorization authorization;
+        uint16[] seats;
+        bytes signatures;
+    }
+
+    /// @dev Full certificate retained in canonical transaction calldata/logs;
+    /// queryable commitments bind archival retrieval to the exact authorization.
+    event FrostSweepResolutionApproved(
+        bytes32 indexed reservationId,
+        bytes32 indexed transactionHash,
+        address vault,
+        uint64 validUntilBlock,
+        uint16[] seats,
+        bytes signatures
+    );
+
     event FrostDepositsSwept(
         bytes32 indexed walletId,
         bytes32 indexed transactionHash,
@@ -46,6 +66,100 @@ library FrostDepositSweep {
         FrostCustody.Storage storage custody,
         Sweep calldata request
     ) external {
+        proveSweep(bridge, funding, custody, request, bytes32(0));
+    }
+
+    /// @notice Explicit approved conflict resolution; ordinary sweep proofs
+    /// continue to refuse reserved main consumption.
+    function proveResolution(
+        BridgeState.Storage storage bridge,
+        Resolution calldata resolution
+    ) external {
+        require(!bridge.frostFunding.entered, "FROST funding reentry");
+        bytes32 id = resolution.authorization.reservationId;
+        FrostRedemptionLedger.Intent storage intent = bridge
+            .frostRedemptions
+            .ledger
+            .intents[id];
+        FrostCustody.Wallet storage balance = bridge.frostCustody.wallets[
+            resolution.sweep.walletId
+        ];
+        require(
+            resolution.sweep.includeMain &&
+                FrostRedemptionLedger.unresolved(intent) &&
+                intent.certificate.walletId == resolution.sweep.walletId &&
+                balance.activeReservation == id &&
+                balance.mainOutpoint ==
+                FrostCustody.outpointKey(
+                    intent.certificate.conflictTxHash,
+                    intent.certificate.conflictOutputIndex
+                ),
+            "FROST sweep resolution conflict"
+        );
+        FrostWallets.Wallet storage wallet = bridge.frost.wallets[
+            bytes20(resolution.sweep.walletId)
+        ];
+        require(
+            wallet.id == resolution.sweep.walletId &&
+                wallet.descriptorHash == intent.certificate.descriptorHash &&
+                resolution.authorization.vault == resolution.sweep.vault,
+            "FROST sweep resolution binding"
+        );
+        require(
+            uint256(resolution.authorization.validUntilBlock) <=
+                block.number +
+                    bridge
+                        .frostRedemptions
+                        .configuration
+                        .maximumCertificateBlocks &&
+                FrostSweepResolutionCertificate.validate(
+                    address(this),
+                    wallet.descriptor,
+                    resolution.authorization,
+                    resolution.seats,
+                    resolution.signatures
+                ),
+            "FROST sweep resolution certificate"
+        );
+        require(
+            block.number <= type(uint64).max,
+            "FROST resolution block overflow"
+        );
+        intent.sweepResolutionHash = resolution.authorization.transactionHash;
+        intent.sweepResolutionBlock = uint64(block.number);
+        intent.sweepResolutionValidUntilBlock = resolution
+            .authorization
+            .validUntilBlock;
+        for (uint256 i = 0; i < resolution.seats.length; i++)
+            intent.sweepResolutionSeats.push(resolution.seats[i]);
+        intent.sweepResolutionSignaturesHash = keccak256(resolution.signatures);
+        intent
+            .sweepResolutionAuthorizationHash = FrostSweepResolutionCertificate
+            .digest(address(this), resolution.authorization);
+        emit FrostSweepResolutionApproved(
+            id,
+            resolution.authorization.transactionHash,
+            resolution.authorization.vault,
+            resolution.authorization.validUntilBlock,
+            resolution.seats,
+            resolution.signatures
+        );
+        proveSweep(
+            bridge,
+            bridge.frostFunding,
+            bridge.frostCustody,
+            resolution.sweep,
+            id
+        );
+    }
+
+    function proveSweep(
+        BridgeState.Storage storage bridge,
+        FrostFundingState.Storage storage funding,
+        FrostCustody.Storage storage custody,
+        Sweep calldata request,
+        bytes32 resolutionId
+    ) private {
         require(!funding.entered, "FROST funding reentry");
         funding.entered = true;
         FrostWallets.Wallet storage wallet = bridge.frost.wallets[
@@ -84,7 +198,8 @@ library FrostDepositSweep {
             bridge,
             funding,
             custody,
-            request
+            request,
+            resolutionId
         );
         require(accounting.inputsValue >= value, "FROST sweep inflation");
         uint256 fee = accounting.inputsValue - value;
@@ -108,34 +223,7 @@ library FrostDepositSweep {
                 charged;
             accounting.treasuryFee += deposit.treasuryFee;
         }
-        // Main replacement is allowed only with its canonical spend proof, and
-        // cannot race a redemption reservation. Additional deposit-only sweeps
-        // retain the existing main and all captured reservation inputs.
-        if (request.includeMain) {
-            FrostCustody.Wallet storage balance = custody.wallets[
-                request.walletId
-            ];
-            FrostCustody.Output storage main = custody.outputs[
-                balance.mainOutpoint
-            ];
-            main.spent = true;
-            balance.value -= main.value;
-            bridge.spentMainUTXOs[uint256(balance.mainOutpoint)] = true;
-            balance.mainOutpoint = bytes32(0);
-        }
-        bytes32 newKey = FrostCustody.outpointKey(txHash, 0);
-        require(
-            !bridge.spentMainUTXOs[uint256(newKey)],
-            "FROST sweep output consumed"
-        );
-        FrostCustody.credit(
-            custody,
-            request.walletId,
-            custody.wallets[request.walletId].generation,
-            txHash,
-            0,
-            value
-        );
+        creditSweep(bridge, request, txHash, value, resolutionId);
         if (wallet.state == FrostWallets.State.ReadyUnfunded)
             wallet.state = FrostWallets.State.Live;
         // Effects precede Bank/Vault callbacks; any late failure rolls back all
@@ -163,11 +251,74 @@ library FrostDepositSweep {
         emit FrostDepositsSwept(request.walletId, txHash, value);
     }
 
+    function creditSweep(
+        BridgeState.Storage storage bridge,
+        Sweep calldata request,
+        bytes32 txHash,
+        uint64 value,
+        bytes32 resolutionId
+    ) private {
+        // Main replacement is allowed only with its canonical spend proof, and
+        // cannot race a redemption reservation. Additional deposit-only sweeps
+        // retain the existing main and all captured reservation inputs.
+        if (request.includeMain) {
+            FrostCustody.Wallet storage balance = bridge.frostCustody.wallets[
+                request.walletId
+            ];
+            FrostCustody.Output storage main = bridge.frostCustody.outputs[
+                balance.mainOutpoint
+            ];
+            main.spent = true;
+            balance.value -= main.value;
+            bridge.spentMainUTXOs[uint256(balance.mainOutpoint)] = true;
+            // credit retains the captured version while resolution is active.
+            // Keep the old nonzero main pointer until the new output is credited.
+            if (resolutionId == bytes32(0)) balance.mainOutpoint = bytes32(0);
+        }
+        bytes32 newKey = FrostCustody.outpointKey(txHash, 0);
+        require(
+            !bridge.spentMainUTXOs[uint256(newKey)],
+            "FROST sweep output consumed"
+        );
+        FrostCustody.credit(
+            bridge.frostCustody,
+            request.walletId,
+            bridge.frostCustody.wallets[request.walletId].generation,
+            txHash,
+            0,
+            value
+        );
+        if (resolutionId != bytes32(0)) {
+            bridge.frostCustody.wallets[request.walletId].mainOutpoint = newKey;
+            if (
+                bridge
+                    .frostRedemptions
+                    .ledger
+                    .intents[resolutionId]
+                    .cancellationFee > 0
+            ) {
+                FrostCancellationHistory.recordFirstReturn(
+                    bridge.frostRedemptions.cancellationHistory,
+                    bridge.frostRedemptions.ledger.intents[resolutionId],
+                    resolutionId
+                );
+            }
+            FrostRedemptionLedger.resolveSweep(
+                bridge.frostRedemptions.ledger,
+                bridge.frostCustody,
+                bridge.bank,
+                resolutionId,
+                txHash
+            );
+        }
+    }
+
     function consumeInputs(
         BridgeState.Storage storage bridge,
         FrostFundingState.Storage storage funding,
         FrostCustody.Storage storage custody,
-        Sweep calldata request
+        Sweep calldata request,
+        bytes32 resolutionId
     ) private returns (Accounting memory accounting) {
         bytes memory inputs = request.transaction.inputVector;
         (uint256 extra, uint256 count) = inputs.parseVarInt();
@@ -197,7 +348,7 @@ library FrostDepositSweep {
         );
         if (request.includeMain)
             require(
-                balance.activeReservation == bytes32(0) &&
+                balance.activeReservation == resolutionId &&
                     balance.mainOutpoint != bytes32(0),
                 "FROST sweep main reserved"
             );
