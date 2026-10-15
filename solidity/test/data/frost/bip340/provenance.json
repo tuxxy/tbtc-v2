@@ -1,0 +1,43 @@
+{
+  "repository": "https://github.com/bitcoin/bips",
+  "commit": "927b6de9915c9262615a6399de51b200f81e5aa4",
+  "files": [
+    {
+      "path": "bip-0340/test-vectors.csv",
+      "git_blob_sha1": "672339129a844a060591bb22f444158ff45438ed",
+      "sha256": "34c9d1d9c3a88d524bc80778540dc43f8306ec249a7485293063c376db851c2d",
+      "url": "https://github.com/bitcoin/bips/blob/927b6de9915c9262615a6399de51b200f81e5aa4/bip-0340/test-vectors.csv"
+    },
+    {
+      "path": "bip-0340/LICENSE",
+      "git_blob_sha1": "6ad8fcfb47c9b409bfb52755294f763e09535939",
+      "sha256": "e4974cd8532036eda7e540a9930fee0c020cb297d455033232606298a89adbd4",
+      "url": "https://github.com/bitcoin/bips/blob/927b6de9915c9262615a6399de51b200f81e5aa4/bip-0340/LICENSE"
+    }
+  ],
+  "csv_last_change_commit": "200f9b26fe0a2f235a2af8b30c4be9f12f6bc9cb",
+  "specialization": "Solidity bytes32 message API; full CSV retained. Non-32-byte messages are excluded explicitly, never truncated or hashed.",
+  "excluded_non32_vectors": [
+    {
+      "index": "15",
+      "message_bytes": 0
+    },
+    {
+      "index": "16",
+      "message_bytes": 1
+    },
+    {
+      "index": "17",
+      "message_bytes": 17
+    },
+    {
+      "index": "18",
+      "message_bytes": 100
+    }
+  ],
+  "oracle_dependency": {
+    "package": "@noble/secp256k1",
+    "version": "1.6.3",
+    "source": "existing solidity/yarn.lock transitive dependency; no manifest change or upgrade"
+  }
+}
