@@ -11,10 +11,10 @@ import * as secp from "@noble/secp256k1"
 import { utils } from "ethers"
 import {
   evidenceDirectory,
-  prepareEvidenceDirectory,
   reserveCorePort,
   trackCore,
   reapCore,
+  prepareEvidenceDirectory,
 } from "./frost-test-isolation"
 import { digestBinaryForRun } from "./frost-digest-builder"
 import {
@@ -87,14 +87,33 @@ export type CoreTermsOverrides = Partial<
   >
 >
 
+// Amount is the only configurable funding value; identities/keys remain derived.
+export function validateDepositAmount(amount = 100000): number {
+  assert(
+    typeof amount === "number" &&
+      Number.isSafeInteger(amount) &&
+      amount >= 3000 &&
+      amount <= 2100000000000000,
+    "depositAmount must be an integer satoshi amount from 3000 to MAX_SATOSHI"
+  )
+  return amount
+}
+
 export default async function runCoreWitnessCheck(
   outputDirectory: string = evidenceDirectory(
     "core",
-    process.env.FROST_C05_CORE_EVIDENCE
+    process.env.FROST_C04_CORE_EVIDENCE || process.env.FROST_C05_CORE_EVIDENCE
   ),
   digestBinary?: string,
-  overrides: CoreTermsOverrides = {}
+  overrides: CoreTermsOverrides = {},
+  options: { depositAmount?: number } = {}
 ) {
+  const depositAmount = validateDepositAmount(options.depositAmount)
+  const sweepAmount = depositAmount - 1000
+  const satoshis = BigInt(depositAmount)
+  const bitcoinAmount = `${satoshis / 100000000n}.${(satoshis % 100000000n)
+    .toString()
+    .padStart(8, "0")}`
   const allowed = [
     "chainId",
     "bridge",
@@ -107,7 +126,9 @@ export default async function runCoreWitnessCheck(
     assert(allowed.includes(key), `Unsupported Terms override: ${key}`)
   prepareEvidenceDirectory(outputDirectory)
   const selectedDigestBinary = digestBinaryForRun(
-    digestBinary || process.env.FROST_C05_DIGEST_BINARY
+    digestBinary ||
+      process.env.FROST_C04_DIGEST_BINARY ||
+      process.env.FROST_C05_DIGEST_BINARY
   )
   assert.equal(
     sha(fs.readFileSync(path.join(CORE, "bitcoind"))).toString("hex"),
@@ -276,6 +297,7 @@ export default async function runCoreWitnessCheck(
     const terms: Terms = {
       ...baseTerms,
       ...overrides,
+      amount: String(depositAmount),
       bitcoinGenesis: toHex(reverse(rpc("getblockhash", [0]))),
       fullWalletId: utils.keccak256(
         utils.concat([utils.id("tbtc-v2/frost-wallet-id/v1"), q])
@@ -309,8 +331,8 @@ export default async function runCoreWitnessCheck(
     const info = rpc("getdescriptorinfo", [`rawtr(${depositKey})`])
     const address = rpc("deriveaddresses", [info.descriptor])[0]
     const funding = [
-      rpc("sendtoaddress", [address, 0.001], true),
-      rpc("sendtoaddress", [address, 0.001], true),
+      rpc("sendtoaddress", [address, bitcoinAmount], true),
+      rpc("sendtoaddress", [address, bitcoinAmount], true),
     ]
     const fundingBlock = rpc("generatetoaddress", [1, miner])[0]
     const locate = (txid: string): Input => {
@@ -326,7 +348,7 @@ export default async function runCoreWitnessCheck(
     const walletInput = locate(funding[0])
     const refundInput = locate(funding[1])
     const destination = Buffer.from(`5120${rawHex(q)}`, "hex")
-    const walletRaw = spend(walletInput, destination, 99000)
+    const walletRaw = spend(walletInput, destination, sweepAmount)
     const walletDigest = digest(
       walletRaw,
       depositScript,
@@ -351,7 +373,7 @@ export default async function runCoreWitnessCheck(
     const walletControl = fromHex(
       parity === 0 ? profile.walletControlEven : profile.walletControlOdd
     )
-    const sweep = spend(walletInput, destination, 99000, 0, [
+    const sweep = spend(walletInput, destination, sweepAmount, 0, [
       walletSignature,
       fromHex(profile.walletLeaf),
       walletControl,
@@ -364,7 +386,7 @@ export default async function runCoreWitnessCheck(
     assert(swept && swept.scriptPubKey.hex === destination.toString("hex"))
     // Archive a valid competing wallet-leaf spend of the SECOND deposit before
     // disabling wallet signing. Admission is checked only; do not broadcast it.
-    const walletConflictUnsigned = spend(refundInput, destination, 99000)
+    const walletConflictUnsigned = spend(refundInput, destination, sweepAmount)
     const walletConflictDigest = digest(
       walletConflictUnsigned,
       depositScript,
@@ -382,7 +404,7 @@ export default async function runCoreWitnessCheck(
         rawHex(q)
       )
     )
-    const walletConflictRaw = spend(refundInput, destination, 99000, 0, [
+    const walletConflictRaw = spend(refundInput, destination, sweepAmount, 0, [
       walletConflictSignature,
       fromHex(profile.walletLeaf),
       walletControl,
@@ -409,7 +431,7 @@ export default async function runCoreWitnessCheck(
     const refundRaw = spend(
       refundInput,
       refundDestination,
-      99000,
+      sweepAmount,
       terms.refundLocktime
     )
     const refundDigest = digest(
@@ -438,7 +460,7 @@ export default async function runCoreWitnessCheck(
     const refund = spend(
       refundInput,
       refundDestination,
-      99000,
+      sweepAmount,
       terms.refundLocktime,
       [refundSignature, fromHex(profile.refundLeaf), refundControl]
     )
