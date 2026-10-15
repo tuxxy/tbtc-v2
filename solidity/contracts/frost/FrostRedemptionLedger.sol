@@ -238,6 +238,185 @@ library FrostRedemptionLedger {
         );
     }
 
+    function cancellationExposureFor(
+        Storage storage self,
+        FrostCustody.Storage storage custody,
+        bytes32 id,
+        uint64 fee
+    ) internal view returns (uint64) {
+        Intent storage intent = self.intents[id];
+        FrostCustody.Wallet storage wallet = custody.wallets[
+            intent.certificate.walletId
+        ];
+        require(
+            wallet.activeReservation == id &&
+                fee <= wallet.value &&
+                self.netLiability[intent.certificate.walletId] >=
+                intent.reservedNet &&
+                wallet.value - fee >=
+                self.netLiability[intent.certificate.walletId] -
+                    intent.reservedNet,
+            "FROST cancellation strands liabilities"
+        );
+        return fee > intent.reservedNet ? fee - intent.reservedNet : 0;
+    }
+
+    /// @dev The caller has verified SPV inclusion and the exact admitted bytes.
+    function pay(
+        Storage storage self,
+        FrostCustody.Storage storage custody,
+        Bank bank,
+        address treasury,
+        bytes32 id,
+        uint64 changeValue,
+        uint32 changeIndex
+    ) internal {
+        Intent storage intent = self.intents[id];
+        require(unresolved(intent), "FROST intent already resolved");
+        intent.state = IntentState.Paid;
+        uint64 burn;
+        uint64 fees;
+        for (uint256 i = 0; i < intent.requestIds.length; i++) {
+            Request storage pending = self.requests[intent.requestIds[i]];
+            require(
+                pending.reservationId == id &&
+                    (pending.state == State.Reserved ||
+                        pending.state == State.TimeoutPending),
+                "FROST settlement request state"
+            );
+            pending.state = State.Paid;
+            self.escrow[pending.walletId] -= pending.gross;
+            uint64 net = pending.gross - pending.treasuryFee;
+            self.netLiability[pending.walletId] -= net;
+            burn += net;
+            fees += pending.treasuryFee;
+        }
+        replaceCustody(
+            self,
+            custody,
+            intent,
+            intent.transactionHash,
+            changeValue,
+            changeIndex
+        );
+        bank.decreaseBalance(burn);
+        if (fees > 0) bank.transferBalance(treasury, fees);
+        // Confirmed payment spends the shared conflict input, invalidating the
+        // approved cancellation. Its independent fee budget can now return.
+        if (intent.cancellationFee > 0)
+            bank.transferBalance(
+                intent.cancellationSponsor,
+                intent.cancellationFee
+            );
+    }
+
+    /// @dev Cancellation fees have their own funded Bank budget. Burning that
+    /// budget reconciles the lost custody; request escrow refunds remain whole.
+    function cancel(
+        Storage storage self,
+        FrostCustody.Storage storage custody,
+        Bank bank,
+        bytes32 id,
+        uint64 changeValue,
+        uint32 changeIndex
+    ) internal {
+        Intent storage intent = self.intents[id];
+        require(
+            unresolved(intent) &&
+                intent.cancellationHash != bytes32(0) &&
+                intent.cancellationFee > 0,
+            "FROST cancellation not authorized"
+        );
+        intent.state = IntentState.Cancelled;
+        for (uint256 i = 0; i < intent.requestIds.length; i++) {
+            Request storage pending = self.requests[intent.requestIds[i]];
+            require(
+                pending.reservationId == id &&
+                    (pending.state == State.Reserved ||
+                        pending.state == State.TimeoutPending),
+                "FROST cancellation request state"
+            );
+            pending.state = State.Refunded;
+            self.escrow[pending.walletId] -= pending.gross;
+            self.netLiability[pending.walletId] -=
+                pending.gross -
+                pending.treasuryFee;
+        }
+        replaceCustody(
+            self,
+            custody,
+            intent,
+            intent.cancellationHash,
+            changeValue,
+            changeIndex
+        );
+        bank.decreaseBalance(intent.cancellationFee);
+        for (uint256 i = 0; i < intent.requestIds.length; i++) {
+            Request storage pending = self.requests[intent.requestIds[i]];
+            bank.transferBalance(pending.redeemer, pending.gross);
+            emit FrostRedemptionRefunded(
+                intent.requestIds[i],
+                pending.redeemer,
+                pending.gross
+            );
+        }
+    }
+
+    function replaceCustody(
+        Storage storage self,
+        FrostCustody.Storage storage custody,
+        Intent storage intent,
+        bytes32 transactionHash,
+        uint64 changeValue,
+        uint32 changeIndex
+    ) private {
+        FrostCustody.Wallet storage wallet = custody.wallets[
+            intent.certificate.walletId
+        ];
+        require(
+            wallet.activeReservation ==
+                FrostReservationCertificate.reservationId(
+                    address(this),
+                    intent.certificate
+                ),
+            "FROST active intent mismatch"
+        );
+        for (uint256 i = 0; i < intent.inputs.length; i++) {
+            BitcoinTx.UTXO storage input = intent.inputs[i];
+            FrostCustody.Output storage output = custody.outputs[
+                outpointKey(input.txHash, input.txOutputIndex)
+            ];
+            require(
+                !output.spent &&
+                    output.walletId == intent.certificate.walletId &&
+                    output.value == input.txOutputValue,
+                "FROST spent reservation input"
+            );
+            output.spent = true;
+            wallet.value -= output.value;
+        }
+        bytes32 key = outpointKey(transactionHash, changeIndex);
+        require(
+            changeValue > 0 && custody.outputs[key].walletId == bytes32(0),
+            "FROST invalid custody change"
+        );
+        custody.outputs[key] = FrostCustody.Output(
+            intent.certificate.walletId,
+            changeValue,
+            false
+        );
+        wallet.value += changeValue;
+        require(
+            wallet.value <= 2100000000000000 &&
+                wallet.value >= self.netLiability[intent.certificate.walletId],
+            "FROST remaining custody liabilities"
+        );
+        wallet.mainOutpoint = key;
+        wallet.activeReservation = bytes32(0);
+        wallet.cancellationExposure = 0;
+        wallet.stateVersion++;
+    }
+
     struct Admission {
         bytes32 walletId;
         bytes32 descriptorHash;

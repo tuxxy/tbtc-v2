@@ -1,0 +1,259 @@
+// SPDX-License-Identifier: GPL-3.0-only
+pragma solidity 0.8.17;
+
+import "../bridge/BridgeState.sol";
+import "./FrostRedemptionTransaction.sol";
+import "./FrostCancellationCertificate.sol";
+
+/// @notice Fixed linked proof and cancellation consumer; Bridge storage is shared.
+library FrostRedemptionSettlement {
+    event FrostRedemptionPaid(
+        bytes32 indexed reservationId,
+        bytes32 transactionHash
+    );
+    event FrostCancellationAuthorized(
+        bytes32 indexed reservationId,
+        bytes32 transactionHash,
+        uint64 fee,
+        address sponsor
+    );
+    event FrostCancellationConfirmed(
+        bytes32 indexed reservationId,
+        bytes32 transactionHash
+    );
+
+    function enter(BridgeState.Storage storage self) private {
+        require(!self.frostFunding.entered, "FROST redemption reentry");
+        self.frostFunding.entered = true;
+    }
+
+    function leave(BridgeState.Storage storage self) private {
+        self.frostFunding.entered = false;
+    }
+
+    function checkWindow(BridgeState.Storage storage self, uint64 validUntil)
+        private
+        view
+    {
+        require(
+            validUntil >= block.number &&
+                uint256(validUntil) <=
+                block.number +
+                    self
+                        .frostRedemptions
+                        .configuration
+                        .maximumCertificateBlocks,
+            "FROST certificate window"
+        );
+    }
+
+    function paymentRequests(
+        FrostRedemptionLedger.Storage storage ledger,
+        FrostRedemptionLedger.Intent storage intent
+    ) private view returns (FrostSigningIntent.Request[] memory requests) {
+        requests = new FrostSigningIntent.Request[](intent.requestIds.length);
+        for (uint256 i = 0; i < requests.length; i++)
+            requests[i] = FrostSigningIntent.Request(
+                intent.requestIds[i],
+                intent.payouts[i],
+                ledger.requests[intent.requestIds[i]].script
+            );
+    }
+
+    function consumeSharedInputs(
+        BridgeState.Storage storage self,
+        FrostRedemptionLedger.Intent storage intent
+    ) private {
+        for (uint256 i = 0; i < intent.inputs.length; i++) {
+            uint256 key = uint256(
+                FrostRedemptionLedger.outpointKey(
+                    intent.inputs[i].txHash,
+                    intent.inputs[i].txOutputIndex
+                )
+            );
+            require(
+                !self.spentMainUTXOs[key],
+                "FROST shared input already consumed"
+            );
+            self.spentMainUTXOs[key] = true;
+        }
+    }
+
+    function submitPayment(
+        BridgeState.Storage storage self,
+        bytes32 id,
+        BitcoinTx.Info calldata transaction,
+        BitcoinTx.Proof calldata proof
+    ) external {
+        enter(self);
+        FrostRedemptionLedger.Intent storage intent = self
+            .frostRedemptions
+            .ledger
+            .intents[id];
+        require(
+            FrostRedemptionLedger.unresolved(intent),
+            "FROST payment intent state"
+        );
+        FrostWallets.Wallet storage wallet = self.frost.wallets[
+            bytes20(intent.certificate.walletId)
+        ];
+        FrostRedemptionTransaction.Result
+            memory result = FrostRedemptionTransaction.validateRedemption(
+                transaction,
+                wallet.descriptor.outputKey,
+                intent.inputs,
+                paymentRequests(self.frostRedemptions.ledger, intent)
+            );
+        require(
+            result.txHash == intent.transactionHash &&
+                result.snapshot == intent.snapshot,
+            "FROST payment changed intent"
+        );
+        require(
+            BitcoinTx.validateProof(self, transaction, proof) == result.txHash,
+            "FROST payment proof identity"
+        );
+        consumeSharedInputs(self, intent);
+        FrostRedemptionLedger.pay(
+            self.frostRedemptions.ledger,
+            self.frostCustody,
+            self.bank,
+            self.treasury,
+            id,
+            result.changeValue,
+            result.changeIndex
+        );
+        emit FrostRedemptionPaid(id, result.txHash);
+        leave(self);
+    }
+
+    function authorizeCancellation(
+        BridgeState.Storage storage self,
+        FrostCancellationCertificate.Authorization calldata authorization,
+        BitcoinTx.Info calldata transaction,
+        uint16[] calldata seats,
+        bytes calldata signatures
+    ) external {
+        enter(self);
+        FrostRedemptionLedger.Intent storage intent = self
+            .frostRedemptions
+            .ledger
+            .intents[authorization.reservationId];
+        require(
+            FrostRedemptionLedger.unresolved(intent) &&
+                intent.cancellationHash == bytes32(0),
+            "FROST cancellation intent state"
+        );
+        FrostWallets.Wallet storage wallet = self.frost.wallets[
+            bytes20(intent.certificate.walletId)
+        ];
+        checkWindow(self, authorization.validUntilBlock);
+        FrostRedemptionTransaction.Result
+            memory result = FrostRedemptionTransaction.validateCancellation(
+                transaction,
+                wallet.descriptor.outputKey,
+                intent.inputs
+            );
+        FrostRedemptionTransaction.validateFees(
+            result,
+            intent.certificate.minimumFee,
+            intent.certificate.maximumFee,
+            intent.certificate.maximumSatPerVByte
+        );
+        require(
+            result.txHash == authorization.transactionHash &&
+                result.snapshot == authorization.snapshot &&
+                result.fee == authorization.fee,
+            "FROST cancellation changed intent"
+        );
+        self
+            .frostCustody
+            .wallets[intent.certificate.walletId]
+            .cancellationExposure = FrostRedemptionLedger
+            .cancellationExposureFor(
+                self.frostRedemptions.ledger,
+                self.frostCustody,
+                authorization.reservationId,
+                result.fee
+            );
+        require(
+            FrostCancellationCertificate.validate(
+                address(this),
+                wallet.descriptor,
+                authorization,
+                seats,
+                signatures
+            ),
+            "FROST cancellation certificate"
+        );
+        require(
+            block.number <= type(uint64).max,
+            "FROST cancellation block overflow"
+        );
+        intent.cancellationHash = result.txHash;
+        intent.cancellationSnapshot = result.snapshot;
+        intent.cancellationFee = result.fee;
+        intent.cancellationSponsor = msg.sender;
+        intent.cancellationAdmittedBlock = uint64(block.number);
+        intent.cancellationValidUntilBlock = authorization.validUntilBlock;
+        for (uint256 i = 0; i < seats.length; i++)
+            intent.cancellationSeats.push(seats[i]);
+        intent.cancellationSignatures = signatures;
+        self.bank.transferBalanceFrom(msg.sender, address(this), result.fee);
+        emit FrostCancellationAuthorized(
+            authorization.reservationId,
+            result.txHash,
+            result.fee,
+            msg.sender
+        );
+        leave(self);
+    }
+
+    function submitCancellation(
+        BridgeState.Storage storage self,
+        bytes32 id,
+        BitcoinTx.Info calldata transaction,
+        BitcoinTx.Proof calldata proof
+    ) external {
+        enter(self);
+        FrostRedemptionLedger.Intent storage intent = self
+            .frostRedemptions
+            .ledger
+            .intents[id];
+        require(
+            FrostRedemptionLedger.unresolved(intent) &&
+                intent.cancellationHash != bytes32(0),
+            "FROST cancellation intent state"
+        );
+        FrostWallets.Wallet storage wallet = self.frost.wallets[
+            bytes20(intent.certificate.walletId)
+        ];
+        FrostRedemptionTransaction.Result
+            memory result = FrostRedemptionTransaction.validateCancellation(
+                transaction,
+                wallet.descriptor.outputKey,
+                intent.inputs
+            );
+        require(
+            result.txHash == intent.cancellationHash &&
+                result.snapshot == intent.cancellationSnapshot &&
+                result.fee == intent.cancellationFee,
+            "FROST cancellation changed intent"
+        );
+        require(
+            BitcoinTx.validateProof(self, transaction, proof) == result.txHash,
+            "FROST cancellation proof identity"
+        );
+        consumeSharedInputs(self, intent);
+        FrostRedemptionLedger.cancel(
+            self.frostRedemptions.ledger,
+            self.frostCustody,
+            self.bank,
+            id,
+            result.changeValue,
+            result.changeIndex
+        );
+        emit FrostCancellationConfirmed(id, result.txHash);
+        leave(self);
+    }
+}

@@ -6,6 +6,7 @@ import "./IFrostBridge.sol";
 import "./FrostWallets.sol";
 import "./FrostFundingConfiguration.sol";
 import "./FrostRedemptions.sol";
+import "./FrostRedemptionSettlement.sol";
 import "./FrostRedemptionRequests.sol";
 
 interface IFrostGovernance {
@@ -206,6 +207,57 @@ library FrostBridge {
             FrostRedemptionState.ReservationProposal memory proposal = abi
                 .decode(args, (FrostRedemptionState.ReservationProposal));
             return abi.encode(FrostRedemptions.reserve(self, proposal));
+        } else if (
+            selector == IFrostBridge.submitFrostRedemptionProof.selector ||
+            selector == IFrostBridge.submitFrostCancellationProof.selector
+        ) {
+            require(
+                self.isSpvMaintainer[msg.sender],
+                "Caller is not SPV maintainer"
+            );
+            (
+                bytes32 id,
+                BitcoinTx.Info memory transaction,
+                BitcoinTx.Proof memory proof
+            ) = abi.decode(args, (bytes32, BitcoinTx.Info, BitcoinTx.Proof));
+            if (selector == IFrostBridge.submitFrostRedemptionProof.selector)
+                FrostRedemptionSettlement.submitPayment(
+                    self,
+                    id,
+                    transaction,
+                    proof
+                );
+            else
+                FrostRedemptionSettlement.submitCancellation(
+                    self,
+                    id,
+                    transaction,
+                    proof
+                );
+        } else if (
+            selector == IFrostBridge.authorizeFrostCancellation.selector
+        ) {
+            (
+                FrostCancellationCertificate.Authorization memory authorization,
+                BitcoinTx.Info memory transaction,
+                uint16[] memory seats,
+                bytes memory signatures
+            ) = abi.decode(
+                    args,
+                    (
+                        FrostCancellationCertificate.Authorization,
+                        BitcoinTx.Info,
+                        uint16[],
+                        bytes
+                    )
+                );
+            FrostRedemptionSettlement.authorizeCancellation(
+                self,
+                authorization,
+                transaction,
+                seats,
+                signatures
+            );
         } else if (
             selector == IFrostBridge.notifyFrostRedemptionTimeout.selector
         ) {
