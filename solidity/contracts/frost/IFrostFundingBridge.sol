@@ -1,8 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-only
 pragma solidity 0.8.17;
 import "./FrostDepositAdmission.sol";
+import "./FrostDepositSweep.sol";
 
 interface IFrostFundingBridge {
+    function frostCustodyOutput(bytes32 outpoint)
+        external
+        view
+        returns (FrostCustody.Output memory);
+
     event FrostFundingInstalled(
         address indexed verifier,
         bytes32 runtimeHash,
@@ -36,6 +42,10 @@ interface IFrostFundingBridge {
         BitcoinTx.Info calldata transaction,
         uint32 outputIndex
     ) external returns (bytes32);
+
+    function submitFrostDepositSweepProof(
+        FrostDepositSweep.Sweep calldata request
+    ) external;
 
     function frostDepositOutput(FrostDepositProfile.Terms calldata terms)
         external
