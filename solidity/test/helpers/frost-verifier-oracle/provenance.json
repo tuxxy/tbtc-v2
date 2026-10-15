@@ -1,0 +1,17 @@
+{
+  "keepCoreRepository": "https://github.com/threshold-network/keep-core",
+  "keepCoreRevision": "f75b7bc2a56e6b700750e31ce647a7ef90156fc9",
+  "keepCoreGoModSHA256": "759595224bc75ac7c26d9ca4ffdd6a82afb64779f8cd0c9ccea0733c9d787b1b",
+  "modules": {
+    "github.com/btcsuite/btcd": "v0.24.2",
+    "github.com/btcsuite/btcd/btcec/v2": "v2.2.0",
+    "github.com/btcsuite/btcd/btcutil": "v1.1.5",
+    "github.com/btcsuite/btcd/chaincfg/chainhash": "v1.1.0",
+    "golang.org/x/crypto": "v0.32.0",
+    "github.com/decred/dcrd/crypto/blake256": "v1.0.1",
+    "github.com/btcsuite/btclog": "v0.0.0-20170628155309-84c8d2346e9f",
+    "github.com/decred/dcrd/dcrec/secp256k1/v4": "v4.3.0",
+    "golang.org/x/sys": "v0.29.0"
+  },
+  "keepCoreGoSumSHA256": "f9bdd68e95e758c73862c1d1c9887d04e38aaa44a99e385e03a6d086b11583ab"
+}

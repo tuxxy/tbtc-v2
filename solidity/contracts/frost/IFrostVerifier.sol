@@ -11,6 +11,9 @@ interface IFrostVerifier {
         bytes calldata signature
     ) external view returns (bool);
 
+    /// @notice Computes TapTweak with an explicit 32-byte script-tree root.
+    /// @dev All 32 root bytes enter the hash. bytes32(0) is not an omitted root
+    /// (BIP86 / empty script tree); this API cannot represent that hash domain.
     function tapTweak(bytes32 internalKey, bytes32 merkleRoot)
         external
         view

@@ -81,3 +81,32 @@ checks across fresh epochs and after expiry. The collision fixtures use the
 compiler storage layout to force an occupied state at a chosen label, exercise
 the real callback, then remove that state for a positive control. They do not
 claim a practical hash collision. Production contract source is unchanged.
+
+## C-07 explicit-root semantics and Bitcoin differential tests
+
+`IFrostVerifier.tapTweak` always hashes the x-only internal key followed by all
+32 bytes of `merkleRoot`. `bytes32(0)` means an explicit 32-byte zero root; it
+is not the omitted root used for an empty script tree / BIP86. This API does
+not represent the omitted-root hash domain. Callers must supply the actual
+script-tree root for their selected profile.
+
+`Frost.Verifier.GoOracle.test.ts` compares the deployed verifier with the
+test-only Go helper in `test/helpers/frost-verifier-oracle`. Its dependency
+pins come from keep-core K-04 revision
+`f75b7bc2a56e6b700750e31ce647a7ef90156fc9` (recorded in `provenance.json`).
+It uses `schnorr.Sign` / `Signature.Verify` and
+`txscript.ComputeTaprootOutputKey`, with a strict precheck of the tweak hash
+against the group order because the latter helper internally reduces it.
+The fixed seed produces valid signatures, signature/message/key mutations,
+scalar/key/length boundaries, and zero/random roots. A negative control
+compares the explicit zero root with btcd's omitted-root BIP86 result.
+
+Run the new test through the normal Hardhat test setup after installing the
+pinned Go dependencies. The helper runs offline with `go run -mod=readonly .`
+and has a 180-second process timeout. These differential checks are additional
+test evidence; named C-07 proof predicates remain OPEN.
+
+The [D-05 comparison](../../verification/frost-c07/D05-COMPARISON.md) records
+the baseline, scratch-storage and ecrecover alternatives and their proof
+burdens. Candidate measurements and the final implementation choice remain
+OPEN; the differential tests above do not close that decision.
