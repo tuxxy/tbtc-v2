@@ -592,7 +592,12 @@ library FrostRedemptionLedger {
             admission.walletId != bytes32(0) &&
                 admission.descriptorHash != bytes32(0) &&
                 admission.balanceOwner != address(0) &&
-                admission.redeemer != address(0),
+                admission.redeemer != address(0) &&
+                // Bank refuses transfers to itself, which would make a batch's
+                // cancellation proof revert forever; a Bridge refund would mix
+                // with held escrow. Both are refused before escrow.
+                admission.redeemer != address(bank) &&
+                admission.redeemer != address(this),
             "FROST request identity"
         );
         require(

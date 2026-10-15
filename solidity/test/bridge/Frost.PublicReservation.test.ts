@@ -172,6 +172,34 @@ describe("FROST public proof-funded request and reservation", () => {
     expect((await f.frost.frostRedemptionRequest(id)).state).eq(1)
   })
 
+  it("refuses a Bank or Bridge redeemer before escrow with the complete frame intact", async () => {
+    await f.bank.connect(f.depositor).approveBalance(f.frost.address, 20000)
+    const before = await frame(ethers.constants.HashZero)
+    for (const redeemer of [f.bank.address, f.frost.address]) {
+      await expect(
+        f.frost
+          .connect(f.depositor)
+          .requestFrostRedemption(f.walletId, script, 20000, redeemer)
+      ).to.be.revertedWith("FROST request identity")
+      expect(await frame(ethers.constants.HashZero)).eq(before)
+    }
+    // The same approved escrow still admits an ordinary redeemer.
+    const caller = f.frost.connect(f.depositor)
+    const id = await caller.callStatic.requestFrostRedemption(
+      f.walletId,
+      script,
+      20000,
+      f.depositor.address
+    )
+    await caller.requestFrostRedemption(
+      f.walletId,
+      script,
+      20000,
+      f.depositor.address
+    )
+    expect((await f.frost.frostRedemptionRequest(id)).state).eq(1)
+  })
+
   it("rejects insufficient certificate authority with the complete frame intact", async () => {
     const id = await request()
     const p = await proposal(id)
