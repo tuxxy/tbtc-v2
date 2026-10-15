@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 pragma solidity 0.8.17;
+import "./IFrostFundingBridge.sol";
 
 /// @notice Explicit ABI for the Bridge's separately linked FROST entrypoints.
-interface IFrostBridge {
+interface IFrostBridge is IFrostFundingBridge {
     function configureFrostRegistry(address registry) external;
 
     function setFrostRequestsEnabled(bool enabled) external;
