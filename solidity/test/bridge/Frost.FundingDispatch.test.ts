@@ -72,6 +72,60 @@ describe("FROST funding public configuration and deployment", () => {
       bridge: implementation.attach(proxy.address),
     }
   }
+  it("preserves the legacy SPV-maintainer gate through the real Bridge fallback", async () => {
+    const f = await fixture()
+    const funding = await ethers.getContractAt(
+      "IFrostFundingBridge",
+      f.frost.address
+    )
+    const transaction = {
+      version: "0x02000000",
+      inputVector: "0x00",
+      outputVector: "0x00",
+      locktime: "0x00000000",
+    }
+    const proof = {
+      merkleProof: "0x",
+      txIndexInBlock: 0,
+      bitcoinHeaders: "0x",
+      coinbasePreimage: ethers.constants.HashZero,
+      coinbaseProof: "0x",
+    }
+    const request = {
+      walletId: ethers.constants.HashZero,
+      transaction,
+      proof,
+      includeMain: false,
+      vault: ethers.constants.AddressZero,
+    }
+    const frame = async () =>
+      JSON.stringify(
+        await Promise.all([
+          f.bank.balanceOf(f.governance.address),
+          f.bank.balanceOf(f.other.address),
+          f.bank.balanceOf(f.frost.address),
+          f.bank.allowance(f.other.address, f.frost.address),
+          funding.frostCustodyOutput(ethers.constants.HashZero),
+          f.bridge.spentMainUTXOs(ethers.constants.HashZero),
+        ])
+      )
+    const before = await frame()
+    await expect(
+      funding.connect(f.other).submitFrostDepositSweepProof(request)
+    ).revertedWith("Caller is not SPV maintainer")
+    expect(await frame()).eq(before)
+    await f.bridge.setSpvMaintainerStatus(f.other.address, true)
+    await expect(
+      funding.connect(f.other).submitFrostDepositSweepProof(request)
+    ).revertedWith("FROST sweep wallet")
+    expect(await frame()).eq(before)
+    await f.bridge.setSpvMaintainerStatus(f.other.address, false)
+    await expect(
+      funding.connect(f.other).submitFrostDepositSweepProof(request)
+    ).revertedWith("Caller is not SPV maintainer")
+    expect(await frame()).eq(before)
+  })
+
   it("deploys fixed links under EIP170 and keeps uninstalled gates closed", async () => {
     const f = await fixture()
     await expect(f.frost.setFrostFundingGates(true, true)).revertedWith(

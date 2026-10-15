@@ -20,7 +20,14 @@ library FrostBridge {
         require(input.length >= 4, "FROST selector");
         bytes4 selector = bytes4(input[:4]);
         bytes calldata args = input[4:];
-        if (selector == IFrostFundingBridge.configureFrostFunding.selector) {
+        if (selector == IFrostFundingBridge.frostCustodyOutput.selector) {
+            return
+                abi.encode(
+                    self.frostCustody.outputs[abi.decode(args, (bytes32))]
+                );
+        } else if (
+            selector == IFrostFundingBridge.configureFrostFunding.selector
+        ) {
             require(
                 msg.sender == IFrostGovernance(address(this)).governance(),
                 "Caller is not governance"
@@ -108,6 +115,20 @@ library FrostBridge {
                         index
                     )
                 );
+        } else if (
+            selector ==
+            IFrostFundingBridge.submitFrostDepositSweepProof.selector
+        ) {
+            require(
+                self.isSpvMaintainer[msg.sender],
+                "Caller is not SPV maintainer"
+            );
+            FrostDepositSweep.prove(
+                self,
+                self.frostFunding,
+                self.frostCustody,
+                abi.decode(args, (FrostDepositSweep.Sweep))
+            );
         } else if (selector == IFrostFundingBridge.frostDeposit.selector) {
             return
                 abi.encode(
