@@ -4,7 +4,7 @@ import FrostBridgeABI from "../../../src/lib/ethereum/artifacts/frost/IFrostBrid
 
 // The adapter attaches this ABI to the Bridge proxy. Events are emitted by
 // linked FROST libraries, so the generated ABI must carry them explicitly.
-describe("EthereumFrostBridge ABI (K-05)", () => {
+describe("EthereumFrostBridge ABI (K-05, K-06)", () => {
   const iface = new utils.Interface(FrostBridgeABI.abi)
   const functions = [
     "requestFrostRedemption",
@@ -19,6 +19,8 @@ describe("EthereumFrostBridge ABI (K-05)", () => {
     "submitFrostRedemptionProof",
     "submitFrostCancellationProof",
     "claimFrostCancellationBudget",
+    "frostDepositConstruction",
+    "frostDepositRefundConstruction",
   ]
   const events = [
     "FrostRedemptionRequested",
