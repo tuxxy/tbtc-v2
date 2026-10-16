@@ -1,0 +1,2788 @@
+{
+  "abi": [
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "bool",
+          "name": "addressesEnabled",
+          "type": "bool"
+        },
+        {
+          "indexed": false,
+          "internalType": "bool",
+          "name": "revealEnabled",
+          "type": "bool"
+        }
+      ],
+      "name": "FrostFundingGatesChanged",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "verifier",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "bytes32",
+          "name": "runtimeHash",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "bytes32",
+          "name": "qualificationRecord",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "bytes32",
+          "name": "bitcoinGenesis",
+          "type": "bytes32"
+        }
+      ],
+      "name": "FrostFundingInstalled",
+      "type": "event"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes",
+          "name": "descriptor",
+          "type": "bytes"
+        },
+        {
+          "internalType": "uint64",
+          "name": "deadline",
+          "type": "uint64"
+        }
+      ],
+      "name": "__snowfallWalletCreated",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "id",
+          "type": "bytes32"
+        }
+      ],
+      "name": "__snowfallWalletExpired",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "id",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "descriptorHash",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "uint32",
+          "name": "generation",
+          "type": "uint32"
+        },
+        {
+          "internalType": "uint32",
+          "name": "capabilityVersion",
+          "type": "uint32"
+        }
+      ],
+      "name": "__snowfallWalletReady",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "components": [
+            {
+              "internalType": "bytes32",
+              "name": "reservationId",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "snapshot",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "transactionHash",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "uint64",
+              "name": "fee",
+              "type": "uint64"
+            },
+            {
+              "internalType": "uint64",
+              "name": "validUntilBlock",
+              "type": "uint64"
+            }
+          ],
+          "internalType": "struct FrostCancellationCertificate.Authorization",
+          "name": "authorization",
+          "type": "tuple"
+        },
+        {
+          "components": [
+            {
+              "internalType": "bytes4",
+              "name": "version",
+              "type": "bytes4"
+            },
+            {
+              "internalType": "bytes",
+              "name": "inputVector",
+              "type": "bytes"
+            },
+            {
+              "internalType": "bytes",
+              "name": "outputVector",
+              "type": "bytes"
+            },
+            {
+              "internalType": "bytes4",
+              "name": "locktime",
+              "type": "bytes4"
+            }
+          ],
+          "internalType": "struct BitcoinTx.Info",
+          "name": "transaction",
+          "type": "tuple"
+        },
+        {
+          "internalType": "uint16[]",
+          "name": "seats",
+          "type": "uint16[]"
+        },
+        {
+          "internalType": "bytes",
+          "name": "signatures",
+          "type": "bytes"
+        }
+      ],
+      "name": "authorizeFrostCancellation",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "reservationId",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "transactionHash",
+          "type": "bytes32"
+        }
+      ],
+      "name": "claimFrostCancellationBudget",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "verifier",
+          "type": "address"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "runtimeHash",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "qualificationRecord",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "bitcoinGenesis",
+          "type": "bytes32"
+        }
+      ],
+      "name": "configureFrostFunding",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "genesis",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "uint64",
+          "name": "finalityBlocks",
+          "type": "uint64"
+        },
+        {
+          "internalType": "uint64",
+          "name": "maximumCertificateBlocks",
+          "type": "uint64"
+        },
+        {
+          "internalType": "address",
+          "name": "watchtower",
+          "type": "address"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "legacyTransitionEvidence",
+          "type": "bytes32"
+        }
+      ],
+      "name": "configureFrostRedemptions",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "registry",
+          "type": "address"
+        }
+      ],
+      "name": "configureFrostRegistry",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "reservationId",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "transactionHash",
+          "type": "bytes32"
+        }
+      ],
+      "name": "frostCancellationAlternative",
+      "outputs": [
+        {
+          "components": [
+            {
+              "internalType": "bytes32",
+              "name": "transactionHash",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "snapshot",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "uint64",
+              "name": "fee",
+              "type": "uint64"
+            },
+            {
+              "internalType": "address",
+              "name": "sponsor",
+              "type": "address"
+            },
+            {
+              "internalType": "uint64",
+              "name": "admittedBlock",
+              "type": "uint64"
+            },
+            {
+              "internalType": "uint64",
+              "name": "validUntilBlock",
+              "type": "uint64"
+            },
+            {
+              "internalType": "uint16[]",
+              "name": "seats",
+              "type": "uint16[]"
+            },
+            {
+              "internalType": "bytes",
+              "name": "signatures",
+              "type": "bytes"
+            },
+            {
+              "internalType": "bool",
+              "name": "budgetSettled",
+              "type": "bool"
+            }
+          ],
+          "internalType": "struct FrostCancellationHistory.Record",
+          "name": "",
+          "type": "tuple"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "reservationId",
+          "type": "bytes32"
+        }
+      ],
+      "name": "frostCancellationCount",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "reservationId",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "uint256",
+          "name": "index",
+          "type": "uint256"
+        }
+      ],
+      "name": "frostCancellationHash",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "reservationId",
+          "type": "bytes32"
+        }
+      ],
+      "name": "frostCancellationWinner",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "outpoint",
+          "type": "bytes32"
+        }
+      ],
+      "name": "frostCustodyOutput",
+      "outputs": [
+        {
+          "components": [
+            {
+              "internalType": "bytes32",
+              "name": "walletId",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "uint64",
+              "name": "value",
+              "type": "uint64"
+            },
+            {
+              "internalType": "bool",
+              "name": "spent",
+              "type": "bool"
+            }
+          ],
+          "internalType": "struct FrostCustody.Output",
+          "name": "",
+          "type": "tuple"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "outpoint",
+          "type": "bytes32"
+        }
+      ],
+      "name": "frostDeposit",
+      "outputs": [
+        {
+          "internalType": "bytes",
+          "name": "",
+          "type": "bytes"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "components": [
+            {
+              "internalType": "uint256",
+              "name": "chainId",
+              "type": "uint256"
+            },
+            {
+              "internalType": "address",
+              "name": "bridge",
+              "type": "address"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "bitcoinGenesis",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "fullWalletId",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "descriptorHash",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "address",
+              "name": "depositor",
+              "type": "address"
+            },
+            {
+              "internalType": "address",
+              "name": "vault",
+              "type": "address"
+            },
+            {
+              "internalType": "bytes8",
+              "name": "blinding",
+              "type": "bytes8"
+            },
+            {
+              "internalType": "uint64",
+              "name": "amount",
+              "type": "uint64"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "refundKey",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "uint32",
+              "name": "refundLocktime",
+              "type": "uint32"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "extraData",
+              "type": "bytes32"
+            }
+          ],
+          "internalType": "struct FrostDepositProfile.Terms",
+          "name": "terms",
+          "type": "tuple"
+        }
+      ],
+      "name": "frostDepositConstruction",
+      "outputs": [
+        {
+          "components": [
+            {
+              "components": [
+                {
+                  "internalType": "bytes32",
+                  "name": "key",
+                  "type": "bytes32"
+                },
+                {
+                  "internalType": "bytes32",
+                  "name": "root",
+                  "type": "bytes32"
+                },
+                {
+                  "internalType": "uint8",
+                  "name": "parity",
+                  "type": "uint8"
+                }
+              ],
+              "internalType": "struct FrostDepositAdmission.Output",
+              "name": "output",
+              "type": "tuple"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "receipt",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bytes",
+              "name": "walletLeaf",
+              "type": "bytes"
+            },
+            {
+              "internalType": "bytes",
+              "name": "refundLeaf",
+              "type": "bytes"
+            },
+            {
+              "internalType": "bytes",
+              "name": "walletControl",
+              "type": "bytes"
+            },
+            {
+              "internalType": "bytes",
+              "name": "refundControl",
+              "type": "bytes"
+            }
+          ],
+          "internalType": "struct FrostDepositAdmission.Construction",
+          "name": "",
+          "type": "tuple"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "components": [
+            {
+              "internalType": "uint256",
+              "name": "chainId",
+              "type": "uint256"
+            },
+            {
+              "internalType": "address",
+              "name": "bridge",
+              "type": "address"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "bitcoinGenesis",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "fullWalletId",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "descriptorHash",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "address",
+              "name": "depositor",
+              "type": "address"
+            },
+            {
+              "internalType": "address",
+              "name": "vault",
+              "type": "address"
+            },
+            {
+              "internalType": "bytes8",
+              "name": "blinding",
+              "type": "bytes8"
+            },
+            {
+              "internalType": "uint64",
+              "name": "amount",
+              "type": "uint64"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "refundKey",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "uint32",
+              "name": "refundLocktime",
+              "type": "uint32"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "extraData",
+              "type": "bytes32"
+            }
+          ],
+          "internalType": "struct FrostDepositProfile.Terms",
+          "name": "terms",
+          "type": "tuple"
+        }
+      ],
+      "name": "frostDepositOutput",
+      "outputs": [
+        {
+          "components": [
+            {
+              "internalType": "bytes32",
+              "name": "key",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "root",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "uint8",
+              "name": "parity",
+              "type": "uint8"
+            }
+          ],
+          "internalType": "struct FrostDepositAdmission.Output",
+          "name": "",
+          "type": "tuple"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "outpoint",
+          "type": "bytes32"
+        }
+      ],
+      "name": "frostDepositRefundConstruction",
+      "outputs": [
+        {
+          "components": [
+            {
+              "components": [
+                {
+                  "internalType": "bytes32",
+                  "name": "key",
+                  "type": "bytes32"
+                },
+                {
+                  "internalType": "bytes32",
+                  "name": "root",
+                  "type": "bytes32"
+                },
+                {
+                  "internalType": "uint8",
+                  "name": "parity",
+                  "type": "uint8"
+                }
+              ],
+              "internalType": "struct FrostDepositAdmission.Output",
+              "name": "output",
+              "type": "tuple"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "receipt",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bytes",
+              "name": "walletLeaf",
+              "type": "bytes"
+            },
+            {
+              "internalType": "bytes",
+              "name": "refundLeaf",
+              "type": "bytes"
+            },
+            {
+              "internalType": "bytes",
+              "name": "walletControl",
+              "type": "bytes"
+            },
+            {
+              "internalType": "bytes",
+              "name": "refundControl",
+              "type": "bytes"
+            }
+          ],
+          "internalType": "struct FrostDepositAdmission.Construction",
+          "name": "",
+          "type": "tuple"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "frostRedemptionConfiguration",
+      "outputs": [
+        {
+          "components": [
+            {
+              "internalType": "bytes32",
+              "name": "bitcoinGenesis",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "uint64",
+              "name": "finalityBlocks",
+              "type": "uint64"
+            },
+            {
+              "internalType": "uint64",
+              "name": "maximumCertificateBlocks",
+              "type": "uint64"
+            },
+            {
+              "internalType": "bool",
+              "name": "enabled",
+              "type": "bool"
+            },
+            {
+              "internalType": "address",
+              "name": "watchtower",
+              "type": "address"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "legacyTransitionEvidence",
+              "type": "bytes32"
+            }
+          ],
+          "internalType": "struct FrostRedemptionState.Configuration",
+          "name": "",
+          "type": "tuple"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "walletId",
+          "type": "bytes32"
+        }
+      ],
+      "name": "frostRedemptionEscrow",
+      "outputs": [
+        {
+          "internalType": "uint64",
+          "name": "gross",
+          "type": "uint64"
+        },
+        {
+          "internalType": "uint64",
+          "name": "netLiability",
+          "type": "uint64"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "requestId",
+          "type": "bytes32"
+        }
+      ],
+      "name": "frostRedemptionPolicy",
+      "outputs": [
+        {
+          "components": [
+            {
+              "internalType": "address",
+              "name": "watchtower",
+              "type": "address"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "policyId",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "uint64",
+              "name": "notBefore",
+              "type": "uint64"
+            }
+          ],
+          "internalType": "struct FrostRedemptionState.RequestPolicy",
+          "name": "",
+          "type": "tuple"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "requestId",
+          "type": "bytes32"
+        }
+      ],
+      "name": "frostRedemptionRequest",
+      "outputs": [
+        {
+          "components": [
+            {
+              "internalType": "bytes32",
+              "name": "walletId",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "descriptorHash",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "reservationId",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "address",
+              "name": "redeemer",
+              "type": "address"
+            },
+            {
+              "internalType": "uint64",
+              "name": "gross",
+              "type": "uint64"
+            },
+            {
+              "internalType": "uint64",
+              "name": "treasuryFee",
+              "type": "uint64"
+            },
+            {
+              "internalType": "uint64",
+              "name": "maximumBitcoinFee",
+              "type": "uint64"
+            },
+            {
+              "internalType": "uint64",
+              "name": "deadline",
+              "type": "uint64"
+            },
+            {
+              "internalType": "uint64",
+              "name": "finalityBlocks",
+              "type": "uint64"
+            },
+            {
+              "internalType": "uint64",
+              "name": "timeoutBlock",
+              "type": "uint64"
+            },
+            {
+              "internalType": "enum FrostRedemptionLedger.State",
+              "name": "state",
+              "type": "uint8"
+            },
+            {
+              "internalType": "bytes",
+              "name": "script",
+              "type": "bytes"
+            }
+          ],
+          "internalType": "struct FrostRedemptionLedger.Request",
+          "name": "",
+          "type": "tuple"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "frostRegistry",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "reservationId",
+          "type": "bytes32"
+        }
+      ],
+      "name": "frostReservation",
+      "outputs": [
+        {
+          "components": [
+            {
+              "components": [
+                {
+                  "internalType": "bytes32",
+                  "name": "walletId",
+                  "type": "bytes32"
+                },
+                {
+                  "internalType": "bytes32",
+                  "name": "descriptorHash",
+                  "type": "bytes32"
+                },
+                {
+                  "internalType": "uint64",
+                  "name": "generation",
+                  "type": "uint64"
+                },
+                {
+                  "internalType": "uint64",
+                  "name": "stateVersion",
+                  "type": "uint64"
+                },
+                {
+                  "internalType": "bytes32",
+                  "name": "intentCommitment",
+                  "type": "bytes32"
+                },
+                {
+                  "internalType": "bytes32",
+                  "name": "requestIdsHash",
+                  "type": "bytes32"
+                },
+                {
+                  "internalType": "bytes32",
+                  "name": "conflictTxHash",
+                  "type": "bytes32"
+                },
+                {
+                  "internalType": "uint32",
+                  "name": "conflictOutputIndex",
+                  "type": "uint32"
+                },
+                {
+                  "internalType": "uint64",
+                  "name": "minimumFee",
+                  "type": "uint64"
+                },
+                {
+                  "internalType": "uint64",
+                  "name": "maximumFee",
+                  "type": "uint64"
+                },
+                {
+                  "internalType": "uint64",
+                  "name": "maximumSatPerVByte",
+                  "type": "uint64"
+                },
+                {
+                  "internalType": "uint64",
+                  "name": "validUntilBlock",
+                  "type": "uint64"
+                }
+              ],
+              "internalType": "struct FrostReservationCertificate.Reservation",
+              "name": "certificate",
+              "type": "tuple"
+            },
+            {
+              "internalType": "uint64",
+              "name": "admittedBlock",
+              "type": "uint64"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "snapshot",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "transactionHash",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "enum FrostRedemptionLedger.IntentState",
+              "name": "state",
+              "type": "uint8"
+            },
+            {
+              "internalType": "bytes32[]",
+              "name": "requestIds",
+              "type": "bytes32[]"
+            },
+            {
+              "internalType": "uint64[]",
+              "name": "payouts",
+              "type": "uint64[]"
+            },
+            {
+              "components": [
+                {
+                  "internalType": "bytes32",
+                  "name": "txHash",
+                  "type": "bytes32"
+                },
+                {
+                  "internalType": "uint32",
+                  "name": "txOutputIndex",
+                  "type": "uint32"
+                },
+                {
+                  "internalType": "uint64",
+                  "name": "txOutputValue",
+                  "type": "uint64"
+                }
+              ],
+              "internalType": "struct BitcoinTx.UTXO[]",
+              "name": "inputs",
+              "type": "tuple[]"
+            },
+            {
+              "internalType": "uint16[]",
+              "name": "seats",
+              "type": "uint16[]"
+            },
+            {
+              "internalType": "bytes",
+              "name": "signatures",
+              "type": "bytes"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "cancellationHash",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "cancellationSnapshot",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "uint64",
+              "name": "cancellationFee",
+              "type": "uint64"
+            },
+            {
+              "internalType": "address",
+              "name": "cancellationSponsor",
+              "type": "address"
+            },
+            {
+              "internalType": "uint64",
+              "name": "cancellationAdmittedBlock",
+              "type": "uint64"
+            },
+            {
+              "internalType": "uint16[]",
+              "name": "cancellationSeats",
+              "type": "uint16[]"
+            },
+            {
+              "internalType": "bytes",
+              "name": "cancellationSignatures",
+              "type": "bytes"
+            },
+            {
+              "internalType": "uint64",
+              "name": "reservedNet",
+              "type": "uint64"
+            },
+            {
+              "internalType": "uint64",
+              "name": "cancellationValidUntilBlock",
+              "type": "uint64"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "sweepResolutionHash",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "uint64",
+              "name": "sweepResolutionBlock",
+              "type": "uint64"
+            },
+            {
+              "internalType": "uint64",
+              "name": "sweepResolutionValidUntilBlock",
+              "type": "uint64"
+            },
+            {
+              "internalType": "uint16[]",
+              "name": "sweepResolutionSeats",
+              "type": "uint16[]"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "sweepResolutionSignaturesHash",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "sweepResolutionAuthorizationHash",
+              "type": "bytes32"
+            }
+          ],
+          "internalType": "struct FrostRedemptionLedger.Intent",
+          "name": "",
+          "type": "tuple"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "walletId",
+          "type": "bytes32"
+        }
+      ],
+      "name": "frostWalletCustody",
+      "outputs": [
+        {
+          "components": [
+            {
+              "internalType": "uint64",
+              "name": "generation",
+              "type": "uint64"
+            },
+            {
+              "internalType": "uint64",
+              "name": "stateVersion",
+              "type": "uint64"
+            },
+            {
+              "internalType": "uint64",
+              "name": "value",
+              "type": "uint64"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "mainOutpoint",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "activeReservation",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "uint64",
+              "name": "cancellationExposure",
+              "type": "uint64"
+            }
+          ],
+          "internalType": "struct FrostCustody.Wallet",
+          "name": "",
+          "type": "tuple"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "walletId",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "uint64",
+          "name": "stateVersion",
+          "type": "uint64"
+        }
+      ],
+      "name": "frostWalletQuarantine",
+      "outputs": [
+        {
+          "components": [
+            {
+              "internalType": "bytes32",
+              "name": "reservationId",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "reasonHash",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "evidenceHash",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "address",
+              "name": "authority",
+              "type": "address"
+            },
+            {
+              "internalType": "uint64",
+              "name": "recordedBlock",
+              "type": "uint64"
+            },
+            {
+              "internalType": "uint64",
+              "name": "previousStateVersion",
+              "type": "uint64"
+            },
+            {
+              "internalType": "uint64",
+              "name": "stateVersion",
+              "type": "uint64"
+            }
+          ],
+          "internalType": "struct FrostRedemptionState.QuarantineRecord",
+          "name": "",
+          "type": "tuple"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes20",
+          "name": "label",
+          "type": "bytes20"
+        }
+      ],
+      "name": "isFrostFundingTarget",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "requestId",
+          "type": "bytes32"
+        }
+      ],
+      "name": "notifyFrostRedemptionTimeout",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "walletId",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "uint64",
+          "name": "expectedStateVersion",
+          "type": "uint64"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "reasonHash",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "evidenceHash",
+          "type": "bytes32"
+        }
+      ],
+      "name": "quarantineFrostWallet",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "requestId",
+          "type": "bytes32"
+        }
+      ],
+      "name": "refundResolvedFrostRedemption",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "requestId",
+          "type": "bytes32"
+        }
+      ],
+      "name": "refundUnreservedFrostRedemption",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "walletId",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "bytes",
+          "name": "script",
+          "type": "bytes"
+        },
+        {
+          "internalType": "uint64",
+          "name": "gross",
+          "type": "uint64"
+        },
+        {
+          "internalType": "address",
+          "name": "redeemer",
+          "type": "address"
+        }
+      ],
+      "name": "requestFrostRedemption",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "requestNewFrostWallet",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "components": [
+            {
+              "components": [
+                {
+                  "internalType": "bytes32",
+                  "name": "walletId",
+                  "type": "bytes32"
+                },
+                {
+                  "internalType": "bytes32",
+                  "name": "descriptorHash",
+                  "type": "bytes32"
+                },
+                {
+                  "internalType": "uint64",
+                  "name": "generation",
+                  "type": "uint64"
+                },
+                {
+                  "internalType": "uint64",
+                  "name": "stateVersion",
+                  "type": "uint64"
+                },
+                {
+                  "internalType": "bytes32",
+                  "name": "intentCommitment",
+                  "type": "bytes32"
+                },
+                {
+                  "internalType": "bytes32",
+                  "name": "requestIdsHash",
+                  "type": "bytes32"
+                },
+                {
+                  "internalType": "bytes32",
+                  "name": "conflictTxHash",
+                  "type": "bytes32"
+                },
+                {
+                  "internalType": "uint32",
+                  "name": "conflictOutputIndex",
+                  "type": "uint32"
+                },
+                {
+                  "internalType": "uint64",
+                  "name": "minimumFee",
+                  "type": "uint64"
+                },
+                {
+                  "internalType": "uint64",
+                  "name": "maximumFee",
+                  "type": "uint64"
+                },
+                {
+                  "internalType": "uint64",
+                  "name": "maximumSatPerVByte",
+                  "type": "uint64"
+                },
+                {
+                  "internalType": "uint64",
+                  "name": "validUntilBlock",
+                  "type": "uint64"
+                }
+              ],
+              "internalType": "struct FrostReservationCertificate.Reservation",
+              "name": "certificate",
+              "type": "tuple"
+            },
+            {
+              "components": [
+                {
+                  "internalType": "bytes4",
+                  "name": "version",
+                  "type": "bytes4"
+                },
+                {
+                  "internalType": "bytes",
+                  "name": "inputVector",
+                  "type": "bytes"
+                },
+                {
+                  "internalType": "bytes",
+                  "name": "outputVector",
+                  "type": "bytes"
+                },
+                {
+                  "internalType": "bytes4",
+                  "name": "locktime",
+                  "type": "bytes4"
+                }
+              ],
+              "internalType": "struct BitcoinTx.Info",
+              "name": "transaction",
+              "type": "tuple"
+            },
+            {
+              "components": [
+                {
+                  "internalType": "bytes32",
+                  "name": "txHash",
+                  "type": "bytes32"
+                },
+                {
+                  "internalType": "uint32",
+                  "name": "txOutputIndex",
+                  "type": "uint32"
+                },
+                {
+                  "internalType": "uint64",
+                  "name": "txOutputValue",
+                  "type": "uint64"
+                }
+              ],
+              "internalType": "struct BitcoinTx.UTXO[]",
+              "name": "inputs",
+              "type": "tuple[]"
+            },
+            {
+              "components": [
+                {
+                  "internalType": "bytes32",
+                  "name": "id",
+                  "type": "bytes32"
+                },
+                {
+                  "internalType": "uint64",
+                  "name": "value",
+                  "type": "uint64"
+                },
+                {
+                  "internalType": "bytes",
+                  "name": "script",
+                  "type": "bytes"
+                }
+              ],
+              "internalType": "struct FrostSigningIntent.Request[]",
+              "name": "requests",
+              "type": "tuple[]"
+            },
+            {
+              "internalType": "uint16[]",
+              "name": "seats",
+              "type": "uint16[]"
+            },
+            {
+              "internalType": "bytes",
+              "name": "signatures",
+              "type": "bytes"
+            }
+          ],
+          "internalType": "struct FrostRedemptionState.ReservationProposal",
+          "name": "proposal",
+          "type": "tuple"
+        }
+      ],
+      "name": "reserveFrostRedemption",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes",
+          "name": "output",
+          "type": "bytes"
+        }
+      ],
+      "name": "resolveFrostOutputScript",
+      "outputs": [
+        {
+          "internalType": "bytes20",
+          "name": "",
+          "type": "bytes20"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "registry",
+          "type": "address"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "id",
+          "type": "bytes32"
+        }
+      ],
+      "name": "resolveWallet",
+      "outputs": [
+        {
+          "internalType": "bytes20",
+          "name": "",
+          "type": "bytes20"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "q",
+          "type": "bytes32"
+        }
+      ],
+      "name": "resolveWalletOutput",
+      "outputs": [
+        {
+          "internalType": "bytes20",
+          "name": "",
+          "type": "bytes20"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "components": [
+            {
+              "internalType": "uint256",
+              "name": "chainId",
+              "type": "uint256"
+            },
+            {
+              "internalType": "address",
+              "name": "bridge",
+              "type": "address"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "bitcoinGenesis",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "fullWalletId",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "descriptorHash",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "address",
+              "name": "depositor",
+              "type": "address"
+            },
+            {
+              "internalType": "address",
+              "name": "vault",
+              "type": "address"
+            },
+            {
+              "internalType": "bytes8",
+              "name": "blinding",
+              "type": "bytes8"
+            },
+            {
+              "internalType": "uint64",
+              "name": "amount",
+              "type": "uint64"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "refundKey",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "uint32",
+              "name": "refundLocktime",
+              "type": "uint32"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "extraData",
+              "type": "bytes32"
+            }
+          ],
+          "internalType": "struct FrostDepositProfile.Terms",
+          "name": "terms",
+          "type": "tuple"
+        },
+        {
+          "components": [
+            {
+              "internalType": "bytes4",
+              "name": "version",
+              "type": "bytes4"
+            },
+            {
+              "internalType": "bytes",
+              "name": "inputVector",
+              "type": "bytes"
+            },
+            {
+              "internalType": "bytes",
+              "name": "outputVector",
+              "type": "bytes"
+            },
+            {
+              "internalType": "bytes4",
+              "name": "locktime",
+              "type": "bytes4"
+            }
+          ],
+          "internalType": "struct BitcoinTx.Info",
+          "name": "transaction",
+          "type": "tuple"
+        },
+        {
+          "internalType": "uint32",
+          "name": "outputIndex",
+          "type": "uint32"
+        }
+      ],
+      "name": "revealFrostDeposit",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bool",
+          "name": "addressesEnabled",
+          "type": "bool"
+        },
+        {
+          "internalType": "bool",
+          "name": "revealEnabled",
+          "type": "bool"
+        }
+      ],
+      "name": "setFrostFundingGates",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bool",
+          "name": "enabled",
+          "type": "bool"
+        }
+      ],
+      "name": "setFrostRedemptionsEnabled",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bool",
+          "name": "enabled",
+          "type": "bool"
+        }
+      ],
+      "name": "setFrostRequestsEnabled",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "reservationId",
+          "type": "bytes32"
+        },
+        {
+          "components": [
+            {
+              "internalType": "bytes4",
+              "name": "version",
+              "type": "bytes4"
+            },
+            {
+              "internalType": "bytes",
+              "name": "inputVector",
+              "type": "bytes"
+            },
+            {
+              "internalType": "bytes",
+              "name": "outputVector",
+              "type": "bytes"
+            },
+            {
+              "internalType": "bytes4",
+              "name": "locktime",
+              "type": "bytes4"
+            }
+          ],
+          "internalType": "struct BitcoinTx.Info",
+          "name": "transaction",
+          "type": "tuple"
+        },
+        {
+          "components": [
+            {
+              "internalType": "bytes",
+              "name": "merkleProof",
+              "type": "bytes"
+            },
+            {
+              "internalType": "uint256",
+              "name": "txIndexInBlock",
+              "type": "uint256"
+            },
+            {
+              "internalType": "bytes",
+              "name": "bitcoinHeaders",
+              "type": "bytes"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "coinbasePreimage",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bytes",
+              "name": "coinbaseProof",
+              "type": "bytes"
+            }
+          ],
+          "internalType": "struct BitcoinTx.Proof",
+          "name": "proof",
+          "type": "tuple"
+        }
+      ],
+      "name": "submitFrostCancellationProof",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "components": [
+            {
+              "internalType": "bytes32",
+              "name": "walletId",
+              "type": "bytes32"
+            },
+            {
+              "components": [
+                {
+                  "internalType": "bytes4",
+                  "name": "version",
+                  "type": "bytes4"
+                },
+                {
+                  "internalType": "bytes",
+                  "name": "inputVector",
+                  "type": "bytes"
+                },
+                {
+                  "internalType": "bytes",
+                  "name": "outputVector",
+                  "type": "bytes"
+                },
+                {
+                  "internalType": "bytes4",
+                  "name": "locktime",
+                  "type": "bytes4"
+                }
+              ],
+              "internalType": "struct BitcoinTx.Info",
+              "name": "transaction",
+              "type": "tuple"
+            },
+            {
+              "components": [
+                {
+                  "internalType": "bytes",
+                  "name": "merkleProof",
+                  "type": "bytes"
+                },
+                {
+                  "internalType": "uint256",
+                  "name": "txIndexInBlock",
+                  "type": "uint256"
+                },
+                {
+                  "internalType": "bytes",
+                  "name": "bitcoinHeaders",
+                  "type": "bytes"
+                },
+                {
+                  "internalType": "bytes32",
+                  "name": "coinbasePreimage",
+                  "type": "bytes32"
+                },
+                {
+                  "internalType": "bytes",
+                  "name": "coinbaseProof",
+                  "type": "bytes"
+                }
+              ],
+              "internalType": "struct BitcoinTx.Proof",
+              "name": "proof",
+              "type": "tuple"
+            },
+            {
+              "internalType": "bool",
+              "name": "includeMain",
+              "type": "bool"
+            },
+            {
+              "internalType": "address",
+              "name": "vault",
+              "type": "address"
+            }
+          ],
+          "internalType": "struct FrostDepositSweep.Sweep",
+          "name": "request",
+          "type": "tuple"
+        }
+      ],
+      "name": "submitFrostDepositSweepProof",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "reservationId",
+          "type": "bytes32"
+        },
+        {
+          "components": [
+            {
+              "internalType": "bytes4",
+              "name": "version",
+              "type": "bytes4"
+            },
+            {
+              "internalType": "bytes",
+              "name": "inputVector",
+              "type": "bytes"
+            },
+            {
+              "internalType": "bytes",
+              "name": "outputVector",
+              "type": "bytes"
+            },
+            {
+              "internalType": "bytes4",
+              "name": "locktime",
+              "type": "bytes4"
+            }
+          ],
+          "internalType": "struct BitcoinTx.Info",
+          "name": "transaction",
+          "type": "tuple"
+        },
+        {
+          "components": [
+            {
+              "internalType": "bytes",
+              "name": "merkleProof",
+              "type": "bytes"
+            },
+            {
+              "internalType": "uint256",
+              "name": "txIndexInBlock",
+              "type": "uint256"
+            },
+            {
+              "internalType": "bytes",
+              "name": "bitcoinHeaders",
+              "type": "bytes"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "coinbasePreimage",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bytes",
+              "name": "coinbaseProof",
+              "type": "bytes"
+            }
+          ],
+          "internalType": "struct BitcoinTx.Proof",
+          "name": "proof",
+          "type": "tuple"
+        }
+      ],
+      "name": "submitFrostRedemptionProof",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "components": [
+            {
+              "components": [
+                {
+                  "internalType": "bytes32",
+                  "name": "walletId",
+                  "type": "bytes32"
+                },
+                {
+                  "components": [
+                    {
+                      "internalType": "bytes4",
+                      "name": "version",
+                      "type": "bytes4"
+                    },
+                    {
+                      "internalType": "bytes",
+                      "name": "inputVector",
+                      "type": "bytes"
+                    },
+                    {
+                      "internalType": "bytes",
+                      "name": "outputVector",
+                      "type": "bytes"
+                    },
+                    {
+                      "internalType": "bytes4",
+                      "name": "locktime",
+                      "type": "bytes4"
+                    }
+                  ],
+                  "internalType": "struct BitcoinTx.Info",
+                  "name": "transaction",
+                  "type": "tuple"
+                },
+                {
+                  "components": [
+                    {
+                      "internalType": "bytes",
+                      "name": "merkleProof",
+                      "type": "bytes"
+                    },
+                    {
+                      "internalType": "uint256",
+                      "name": "txIndexInBlock",
+                      "type": "uint256"
+                    },
+                    {
+                      "internalType": "bytes",
+                      "name": "bitcoinHeaders",
+                      "type": "bytes"
+                    },
+                    {
+                      "internalType": "bytes32",
+                      "name": "coinbasePreimage",
+                      "type": "bytes32"
+                    },
+                    {
+                      "internalType": "bytes",
+                      "name": "coinbaseProof",
+                      "type": "bytes"
+                    }
+                  ],
+                  "internalType": "struct BitcoinTx.Proof",
+                  "name": "proof",
+                  "type": "tuple"
+                },
+                {
+                  "internalType": "bool",
+                  "name": "includeMain",
+                  "type": "bool"
+                },
+                {
+                  "internalType": "address",
+                  "name": "vault",
+                  "type": "address"
+                }
+              ],
+              "internalType": "struct FrostDepositSweep.Sweep",
+              "name": "sweep",
+              "type": "tuple"
+            },
+            {
+              "components": [
+                {
+                  "internalType": "bytes32",
+                  "name": "reservationId",
+                  "type": "bytes32"
+                },
+                {
+                  "internalType": "bytes32",
+                  "name": "transactionHash",
+                  "type": "bytes32"
+                },
+                {
+                  "internalType": "address",
+                  "name": "vault",
+                  "type": "address"
+                },
+                {
+                  "internalType": "uint64",
+                  "name": "validUntilBlock",
+                  "type": "uint64"
+                }
+              ],
+              "internalType": "struct FrostSweepResolutionCertificate.Authorization",
+              "name": "authorization",
+              "type": "tuple"
+            },
+            {
+              "internalType": "uint16[]",
+              "name": "seats",
+              "type": "uint16[]"
+            },
+            {
+              "internalType": "bytes",
+              "name": "signatures",
+              "type": "bytes"
+            }
+          ],
+          "internalType": "struct FrostDepositSweep.Resolution",
+          "name": "resolution",
+          "type": "tuple"
+        }
+      ],
+      "name": "submitFrostSweepResolutionProof",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes20",
+          "name": "label",
+          "type": "bytes20"
+        }
+      ],
+      "name": "walletDescriptor",
+      "outputs": [
+        {
+          "internalType": "bytes",
+          "name": "",
+          "type": "bytes"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes20",
+          "name": "label",
+          "type": "bytes20"
+        }
+      ],
+      "name": "walletScheme",
+      "outputs": [
+        {
+          "internalType": "uint8",
+          "name": "",
+          "type": "uint8"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "reservationId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "bytes32",
+          "name": "transactionHash",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint64",
+          "name": "fee",
+          "type": "uint64"
+        },
+        {
+          "indexed": false,
+          "internalType": "address",
+          "name": "sponsor",
+          "type": "address"
+        }
+      ],
+      "name": "FrostCancellationAuthorized",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "reservationId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "transactionHash",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "address",
+          "name": "sponsor",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint64",
+          "name": "fee",
+          "type": "uint64"
+        }
+      ],
+      "name": "FrostCancellationBudgetReturned",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "reservationId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "bytes32",
+          "name": "transactionHash",
+          "type": "bytes32"
+        }
+      ],
+      "name": "FrostCancellationConfirmed",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "outpoint",
+          "type": "bytes32"
+        },
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "walletId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "depositor",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "bytes32",
+          "name": "receipt",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint64",
+          "name": "amount",
+          "type": "uint64"
+        }
+      ],
+      "name": "FrostDepositRevealed",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "walletId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "transactionHash",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint64",
+          "name": "outputValue",
+          "type": "uint64"
+        }
+      ],
+      "name": "FrostDepositsSwept",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "reservationId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "bytes32",
+          "name": "transactionHash",
+          "type": "bytes32"
+        }
+      ],
+      "name": "FrostRedemptionPaid",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "requestId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "address",
+          "name": "redeemer",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint64",
+          "name": "gross",
+          "type": "uint64"
+        }
+      ],
+      "name": "FrostRedemptionRefundAvailable",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "requestId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "address",
+          "name": "redeemer",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint64",
+          "name": "gross",
+          "type": "uint64"
+        }
+      ],
+      "name": "FrostRedemptionRefunded",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "requestId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "walletId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "address",
+          "name": "redeemer",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint64",
+          "name": "gross",
+          "type": "uint64"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint64",
+          "name": "treasuryFee",
+          "type": "uint64"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint64",
+          "name": "maximumBitcoinFee",
+          "type": "uint64"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint64",
+          "name": "deadline",
+          "type": "uint64"
+        }
+      ],
+      "name": "FrostRedemptionRequested",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "requestId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "reservationId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint64",
+          "name": "timeoutBlock",
+          "type": "uint64"
+        }
+      ],
+      "name": "FrostRedemptionTimeoutPending",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "bytes32",
+          "name": "genesis",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint64",
+          "name": "finalityBlocks",
+          "type": "uint64"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint64",
+          "name": "maximumCertificateBlocks",
+          "type": "uint64"
+        },
+        {
+          "indexed": false,
+          "internalType": "address",
+          "name": "watchtower",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "bytes32",
+          "name": "legacyTransitionEvidence",
+          "type": "bytes32"
+        }
+      ],
+      "name": "FrostRedemptionsConfigured",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "bool",
+          "name": "enabled",
+          "type": "bool"
+        }
+      ],
+      "name": "FrostRedemptionsEnabled",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "registry",
+          "type": "address"
+        }
+      ],
+      "name": "FrostRegistryConfigured",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": false,
+          "internalType": "bool",
+          "name": "enabled",
+          "type": "bool"
+        }
+      ],
+      "name": "FrostRequestsEnabled",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "reservationId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "walletId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "bytes32",
+          "name": "intentCommitment",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "bytes32",
+          "name": "transactionHash",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint64",
+          "name": "generation",
+          "type": "uint64"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint64",
+          "name": "stateVersion",
+          "type": "uint64"
+        }
+      ],
+      "name": "FrostReservationAdmitted",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "reservationId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "transactionHash",
+          "type": "bytes32"
+        }
+      ],
+      "name": "FrostReservationResolvedBySweep",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "reservationId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "transactionHash",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "address",
+          "name": "vault",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint64",
+          "name": "validUntilBlock",
+          "type": "uint64"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint16[]",
+          "name": "seats",
+          "type": "uint16[]"
+        },
+        {
+          "indexed": false,
+          "internalType": "bytes",
+          "name": "signatures",
+          "type": "bytes"
+        }
+      ],
+      "name": "FrostSweepResolutionApproved",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "walletId",
+          "type": "bytes32"
+        }
+      ],
+      "name": "FrostWalletExpired",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "walletId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "reservationId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint64",
+          "name": "stateVersion",
+          "type": "uint64"
+        },
+        {
+          "indexed": false,
+          "internalType": "bytes32",
+          "name": "reasonHash",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "bytes32",
+          "name": "evidenceHash",
+          "type": "bytes32"
+        }
+      ],
+      "name": "FrostWalletQuarantined",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "walletId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "bytes32",
+          "name": "descriptorHash",
+          "type": "bytes32"
+        }
+      ],
+      "name": "FrostWalletReady",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "walletId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": true,
+          "internalType": "bytes20",
+          "name": "label",
+          "type": "bytes20"
+        },
+        {
+          "indexed": false,
+          "internalType": "bytes32",
+          "name": "descriptorHash",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint64",
+          "name": "deadline",
+          "type": "uint64"
+        }
+      ],
+      "name": "FrostWalletRegistered",
+      "type": "event"
+    }
+  ]
+}
