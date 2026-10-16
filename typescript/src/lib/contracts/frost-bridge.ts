@@ -196,4 +196,19 @@ export interface FrostBridge {
     reservationId: Hex,
     transactionHash: BitcoinTxHash
   ): Promise<Hex>
+
+  /**
+   * C-05 frostDepositConstruction: the deposit for the terms and the
+   * registered wallet key. Reverts while addresses are disabled.
+   */
+  depositConstruction(
+    terms: FrostDepositTerms
+  ): Promise<FrostDepositConstruction>
+
+  /**
+   * C-05 frostDepositRefundConstruction: the historical construction of a
+   * revealed deposit, available even while admission is paused.
+   * @param depositKey - C-05 deposit key of the funding outpoint.
+   */
+  depositRefundConstruction(depositKey: Hex): Promise<FrostDepositConstruction>
 }
