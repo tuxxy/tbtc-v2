@@ -264,6 +264,33 @@ describe("C-08 FROST fraud admission and exact defenses", () => {
     )
   })
 
+  it("defends an unmined movement under its committed fee cap after governance lowers the cap", async () => {
+    // 3,000-sat fee under the 5,000-sat cap in force at commitment.
+    const tx = await commitAndBuild()
+    expect((await w.commitment(source, 0)).maxFee).to.equal(5000)
+    const prevouts = [{ value: source.value, script: keyPath(source) }]
+    const digest = btcd(tx, 0, prevouts)
+    await challenge(source, digest)
+    const params = await w.bridge.movingFundsParameters()
+    expect(params.movingFundsTxMaxTotalFee).to.equal(5000)
+    await w.bridge.updateMovingFundsParameters(2000, ...params.slice(1))
+    const lowered = await w.bridge.movingFundsParameters()
+    expect(lowered.movingFundsTxMaxTotalFee).to.equal(2000)
+    for (let i = 1; i < params.length; i++)
+      expect(lowered[i]).to.equal(params[i])
+    // The stored commitment keeps the cap that authorized the signature.
+    expect((await w.commitment(source, 0)).maxFee).to.equal(5000)
+    await expect(
+      w.frost.defeatFrostFraudChallenge(
+        defense(source, tx, prevouts, AUTH.movement)
+      )
+    )
+      .to.emit(w.frost, "FrostFraudChallengeDefeated")
+      .withArgs(source.id, digest)
+    expect((await challengeState(source, digest)).resolved).to.equal(true)
+    expect(await w.frost.frostOpenChallenges(source.id)).to.equal(0)
+  })
+
   it("defeats a script-path deposit sweep signature on the wallet leaf only", async () => {
     const t = targets[0]
     const funding = await w.reveal(t, 80000)

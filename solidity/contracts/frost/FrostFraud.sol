@@ -475,10 +475,11 @@ library FrostFraud {
                     values[i] <= minimum + remainder,
                 "FROST defense movement split"
             );
+        // The fee policy in force at commitment authorized this signature;
+        // a later governance change cannot revoke its defense.
         uint256 mainValue = self.frostCustody.outputs[main].value;
         require(
-            total <= mainValue &&
-                mainValue - total <= self.movingFundsTxMaxTotalFee,
+            total <= mainValue && mainValue - total <= commitment.maxFee,
             "FROST defense movement fee"
         );
     }

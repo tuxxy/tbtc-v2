@@ -63,7 +63,7 @@ yields a second challenge, bond or timeout. One challenge per key.
 | --- | --- |
 | Proven | `provenTransactions[txHash] == walletId`, written by deposit sweep (including resolution), movement and incoming sweep proofs |
 | Intent | an admitted C-04 intent for this wallet names the hash as its payment, its cancellation, a retained cancellation alternative, or its sweep resolution; it need not have mined (losing replacements included) |
-| Movement | the C-06 commitment for the given period: one input (the committed main), outputs to the committed targets in order with the equal split and fee cap, mined or not |
+| Movement | the C-06 commitment for the given period, retired or not: one input (the committed main), outputs to the committed targets in order with the equal split and the fee cap stored with the commitment, mined or not |
 
 A different legitimate spend of the same input never defeats an unauthorized
 digest, because the digest itself must be rebuilt from the authorized
@@ -90,7 +90,7 @@ transaction.
   per wallet for the C-09 closure ledger.
 
 **Storage.** `FrostFraudState.Storage` (three slots) is taken from the Bridge
-gap, 15 → 12.
+gap, 14 → 11.
 
 ## Evidence
 
