@@ -48,6 +48,10 @@ library FrostMovementState {
         uint64 value;
         uint64 createdAt;
         IncomingState state;
+        // K-08: movedFundsSweepTxMaxTotalFee at recording, the incoming
+        // output's part of a self-transfer defense's fee cap. Appended last;
+        // the struct is a mapping value, so no other slot moves.
+        uint64 sweepFeeCap;
     }
 
     struct Storage {

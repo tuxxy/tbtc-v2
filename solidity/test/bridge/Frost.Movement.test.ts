@@ -173,6 +173,10 @@ describe("C-06 FROST movement and receiving sweeps", () => {
       expect(incoming.source).to.equal(source.id)
       expect(incoming.value).to.equal(values[i])
       expect(incoming.state).to.equal(Incoming.Pending)
+      // K-08: the sweep fee cap in force at the proof, kept for defenses.
+      expect(incoming.sweepFeeCap).to.equal(
+        (await w.bridge.movingFundsParameters()).movedFundsSweepTxMaxTotalFee
+      )
       expect(await counters(t)).to.deep.include({ pending: 1, inbound: 0 })
 
       const s = sweepIncoming(t, [[tx.hash, i]], values[i] - SWEEP_FEE)
@@ -808,6 +812,9 @@ describe("C-06 legacy routes: ECDSA to FROST drain and the stranded case", () =>
       // A legacy source is its 20-byte label, left-aligned.
       expect(incoming.source).to.equal(`${pkh}${"0".repeat(24)}`)
       expect(incoming.state).to.equal(Incoming.Pending)
+      expect(incoming.sweepFeeCap).to.equal(
+        (await w.bridge.movingFundsParameters()).movedFundsSweepTxMaxTotalFee
+      )
       // No legacy request exists for a FROST output.
       expect(
         (await w.bridge.movedFundsSweepRequests(tx.key(i))).state
