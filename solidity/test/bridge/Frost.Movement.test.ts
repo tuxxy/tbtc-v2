@@ -611,6 +611,36 @@ describe("C-06 FROST movement and receiving sweeps", () => {
     expect(c.targets).to.deep.equal([first.label])
   })
 
+  it("clears recorded dust when a terminated wallet later gains custody", async () => {
+    // A terminated wallet records dust and stays Terminated; a late deposit
+    // sweep must clear the dust so the credited value can be committed.
+    const small = targets[2]
+    const smallMain = await w.fund(small, 15000)
+    const funding = await w.reveal(small, 50000, 3600)
+    await w.setState(small, State.Terminated)
+    await w.frost.notifyFrostMovingFundsBelowDust(small.id)
+    expect(await w.state(small)).to.equal(State.Terminated)
+    expect((await w.frost.frostWalletLifecycle(small.id)).dust).to.equal(true)
+    await depositSweep(
+      small,
+      [
+        [smallMain.hash, 0],
+        [funding.hash, 0],
+      ],
+      14000 + 49000,
+      true
+    ).send()
+    const lifecycle = await w.frost.frostWalletLifecycle(small.id)
+    expect(lifecycle.dust).to.equal(false)
+    expect(lifecycle.period).to.equal(1)
+    expect(await w.state(small)).to.equal(State.Terminated)
+    const [first] = targets
+    await w.frost
+      .connect(w.operator)
+      .submitFrostMovingFundsCommitment(small.id, 0, [first.label])
+    expect((await w.commitment(small)).targets).to.deep.equal([first.label])
+  })
+
   it("checks a movement fee against the cap in force at commitment", async () => {
     await commit(targets)
     expect((await w.commitment(source)).maxFee).to.equal(5000)

@@ -75,6 +75,11 @@ library FrostFraud {
         bytes32 indexed walletId,
         bytes32 indexed digest
     );
+    event FrostSanctionNotified(
+        bytes32 indexed walletId,
+        bytes32 descriptorHash,
+        bytes32 reason
+    );
 
     function submit(
         BridgeState.Storage storage self,
@@ -179,7 +184,16 @@ library FrostFraud {
             if (FrostWallets.isMovementTarget(wallet))
                 self.frostMovement.eligibleTargets--;
             wallet.state = FrostWallets.State.Terminated;
+            // Terminated at the timeout check's own clock reading.
+            self.frostMovement.lifecycles[walletId].terminatedAt = uint64(
+                challenge.reportedAt + self.fraudChallengeDefeatTimeout
+            );
         }
+        emit FrostSanctionNotified(
+            walletId,
+            wallet.descriptorHash,
+            keccak256("fraud-defeat-timeout")
+        );
         emit FrostFraudChallengeDefeatTimedOut(walletId, digest);
         // Return the deposit last; the challenge is already resolved.
         // slither-disable-next-line arbitrary-send-eth,low-level-calls,unchecked-lowlevel
