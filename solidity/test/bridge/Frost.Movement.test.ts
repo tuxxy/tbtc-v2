@@ -457,3 +457,245 @@ describe("C-06 FROST movement and receiving sweeps", () => {
     expect(await w.readField(pending)).to.equal(0)
   })
 })
+
+describe("C-06 legacy routes: ECDSA to FROST drain and the stranded case", () => {
+  let w: World
+  let snapshot: string
+  const LegacyState = { Live: 1, MovingFunds: 2, Closing: 3, Terminated: 5 }
+
+  const advance = async (seconds: number) => {
+    await network.provider.send("evm_increaseTime", [seconds])
+    await network.provider.send("evm_mine")
+  }
+  let created = 0
+  /// Registers a legacy wallet through the real registry callback.
+  const legacyWallet = async () => {
+    created += 1
+    const pub = ethers.utils.computePublicKey(
+      ethers.utils.hexZeroPad(ethers.utils.hexlify(5000 + created), 32)
+    )
+    const x = `0x${pub.slice(4, 68)}`
+    const y = `0x${pub.slice(68)}`
+    const compressed = ethers.utils.computePublicKey(pub, true)
+    const pkh = ethers.utils.ripemd160(ethers.utils.sha256(compressed))
+    await w.legacyRegistry.publish(
+      ethers.utils.id(`legacy wallet ${created}`),
+      x,
+      y
+    )
+    return pkh
+  }
+  const legacyNode = (pkh: string) =>
+    w.entry(w.child(w.self, "registeredWallets"), pkh, "bytes20")
+  /// Controlled legacy markers: a main UTXO and MovingFunds (or another state).
+  const legacyMain = async (pkh: string, value: number) => {
+    const utxo = {
+      txHash: ethers.utils.id(`legacy main ${pkh}`),
+      txOutputIndex: 0,
+      txOutputValue: value,
+    }
+    await w.writeField(
+      w.child(legacyNode(pkh), "mainUtxoHash"),
+      ethers.utils.solidityKeccak256(
+        ["bytes32", "uint32", "uint64"],
+        [utxo.txHash, utxo.txOutputIndex, utxo.txOutputValue]
+      )
+    )
+    return utxo
+  }
+  const legacyState = async (pkh: string, state: number) => {
+    const live = w.child(w.self, "liveWalletsCount")
+    const before = await w.readField(w.child(legacyNode(pkh), "state"))
+    if (before === LegacyState.Live && state !== LegacyState.Live)
+      await w.writeField(live, (await w.readField(live)) - 1)
+    await w.writeField(w.child(legacyNode(pkh), "state"), state)
+    if (state === LegacyState.MovingFunds)
+      await w.writeField(
+        w.child(legacyNode(pkh), "movingFundsRequestedAt"),
+        await w.now()
+      )
+  }
+  const members = [1, 2, 3]
+
+  before(async () => {
+    w = await movementWorld(3)
+    await w.legacyRegistry.setMember(w.operator.address)
+    snapshot = await network.provider.send("evm_snapshot")
+  })
+  beforeEach(async () => {
+    expect(await network.provider.send("evm_revert", [snapshot])).to.equal(true)
+    snapshot = await network.provider.send("evm_snapshot")
+  })
+
+  it("drains a legacy wallet into FROST targets only behind the drain gate", async () => {
+    const pkh = await legacyWallet()
+    const main = await legacyMain(pkh, 400000)
+    await legacyState(pkh, LegacyState.MovingFunds)
+    const targets = ascending(w.wallets).slice(0, 2)
+    const labels = targets.map((t) => t.label)
+    await expect(
+      w.bridge
+        .connect(w.operator)
+        .submitMovingFundsCommitment(pkh, main, members, 0, labels)
+    ).to.be.revertedWith("FROST drain disabled")
+    await w.frost.setFrostDrainEnabled(true)
+    await w.bridge
+      .connect(w.operator)
+      .submitMovingFundsCommitment(pkh, main, members, 0, labels)
+    expect(await w.frost.frostDrainTargets(pkh)).to.deep.equal(labels)
+    for (const t of targets)
+      expect(
+        (await w.frost.frostMovementCounters(t.id)).inboundCommitments
+      ).to.equal(1)
+
+    const values = split(400000 - 3000, 2)
+    const mixed = transaction(
+      [[main.txHash, 0]],
+      [
+        { value: values[0], script: p2tr(targets[0].q) },
+        {
+          value: values[1],
+          script: Buffer.concat([
+            Buffer.from("160014", "hex"),
+            Buffer.from(pkh.slice(2), "hex"),
+          ]),
+        },
+      ]
+    )
+    await expect(
+      w.bridge.submitMovingFundsProof(
+        mixed.tx,
+        inclusion(mixed.hash),
+        main,
+        pkh
+      )
+    ).to.be.revertedWith("FROST drain mixes schemes")
+
+    const tx = transaction(
+      [[main.txHash, 0]],
+      targets.map((t, i) => ({ value: values[i], script: p2tr(t.q) }))
+    )
+    await w.bridge.submitMovingFundsProof(tx.tx, inclusion(tx.hash), main, pkh)
+    expect(await w.readField(w.child(legacyNode(pkh), "state"))).to.equal(
+      LegacyState.Closing
+    )
+    expect(await w.frost.frostDrainTargets(pkh)).to.deep.equal([])
+    for (let i = 0; i < 2; i++) {
+      const incoming = await w.frost.frostIncoming(tx.key(i))
+      expect(incoming.target).to.equal(targets[i].id)
+      // A legacy source is its 20-byte label, left-aligned.
+      expect(incoming.source).to.equal(`${pkh}${"0".repeat(24)}`)
+      expect(incoming.state).to.equal(Incoming.Pending)
+      // No legacy request exists for a FROST output.
+      expect(
+        (await w.bridge.movedFundsSweepRequests(tx.key(i))).state
+      ).to.equal(0)
+      const sweep = transaction(
+        [[tx.hash, i]],
+        [{ value: values[i] - 500, script: p2tr(targets[i].q) }]
+      )
+      await w.frost.submitFrostMovedFundsSweepProof(
+        targets[i].id,
+        sweep.tx,
+        inclusion(sweep.hash)
+      )
+      expect(await w.state(targets[i])).to.equal(State.Live)
+      expect(
+        (await w.frost.frostMovementCounters(targets[i].id)).pendingIncoming
+      ).to.equal(0)
+    }
+  })
+
+  it("releases the inbound obligations of a drain whose source timed out unproven", async () => {
+    const pkh = await legacyWallet()
+    const main = await legacyMain(pkh, 400000)
+    await legacyState(pkh, LegacyState.MovingFunds)
+    await w.frost.setFrostDrainEnabled(true)
+    const targets = ascending(w.wallets).slice(0, 2)
+    await w.bridge.connect(w.operator).submitMovingFundsCommitment(
+      pkh,
+      main,
+      members,
+      0,
+      targets.map((t) => t.label)
+    )
+    await expect(w.frost.releaseFrostDrainCommitment(pkh)).to.be.revertedWith(
+      "FROST drain release state"
+    )
+    await advance(7 * 86400 + 1)
+    await w.bridge.notifyMovingFundsTimeout(pkh, members)
+    expect(await w.readField(w.child(legacyNode(pkh), "state"))).to.equal(
+      LegacyState.Terminated
+    )
+    await expect(w.frost.releaseFrostDrainCommitment(pkh))
+      .to.emit(w.frost, "FrostDrainReleased")
+      .withArgs(pkh)
+    for (const t of targets)
+      expect(
+        (await w.frost.frostMovementCounters(t.id)).inboundCommitments
+      ).to.equal(0)
+    await expect(w.frost.releaseFrostDrainCommitment(pkh)).to.be.revertedWith(
+      "FROST drain release state"
+    )
+  })
+
+  it("regression: a legacy target closed with a pending moved funds sweep is stranded", async () => {
+    // The legacy rule this package replaces for FROST targets. A Closing
+    // target can neither sweep its incoming output nor have it timed out.
+    const source = await legacyWallet()
+    const target = await legacyWallet()
+    const main = await legacyMain(source, 100000)
+    await legacyState(source, LegacyState.MovingFunds)
+    await w.bridge
+      .connect(w.operator)
+      .submitMovingFundsCommitment(source, main, members, 0, [target])
+    // The target, with no main of its own, starts closing (as
+    // notifyWalletCloseable would do through moveFunds).
+    await legacyState(target, LegacyState.Closing)
+    const tx = transaction(
+      [[main.txHash, 0]],
+      [
+        {
+          value: 97000,
+          script: Buffer.concat([
+            Buffer.from("160014", "hex"),
+            Buffer.from(target.slice(2), "hex"),
+          ]),
+        },
+      ]
+    )
+    await w.bridge.submitMovingFundsProof(
+      tx.tx,
+      inclusion(tx.hash),
+      main,
+      source
+    )
+    const request = await w.bridge.movedFundsSweepRequests(tx.key(0))
+    expect(request.state).to.equal(1) // Pending, though the target is Closing
+    const sweep = transaction(
+      [[tx.hash, 0]],
+      [
+        {
+          value: 96500,
+          script: Buffer.concat([
+            Buffer.from("160014", "hex"),
+            Buffer.from(target.slice(2), "hex"),
+          ]),
+        },
+      ]
+    )
+    await expect(
+      w.bridge.submitMovedFundsSweepProof(sweep.tx, inclusion(sweep.hash), {
+        txHash: ZERO,
+        txOutputIndex: 0,
+        txOutputValue: 0,
+      })
+    ).to.be.revertedWith("Wallet must be in Live or MovingFunds state")
+    await advance(10 * 86400 + 1)
+    await expect(
+      w.bridge.notifyMovedFundsSweepTimeout(tx.hash, 0, members)
+    ).to.be.revertedWith(
+      "Wallet must be in Live or MovingFunds or Terminated state"
+    )
+  })
+})

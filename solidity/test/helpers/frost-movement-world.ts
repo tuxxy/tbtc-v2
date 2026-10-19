@@ -158,12 +158,18 @@ export async function movementWorld(count = 4) {
   const relay = await deploy("FrostDepositRegtestRelay")
   const implementation = await deploy("Bridge")
   const admin = await deploy("ProxyAdmin")
+  const legacyRegistry = await deploy("FrostDrainRegistryFixture")
+  // The legacy commitment refunds gas through the pool.
+  const pool = await deploy(
+    "@keep-network/random-beacon/contracts/ReimbursementPool.sol:ReimbursementPool",
+    [0, 0]
+  )
   const init = implementation.interface.encodeFunctionData("initialize", [
     bank.address,
     relay.address,
     treasury.address,
-    owner.address,
-    owner.address,
+    legacyRegistry.address,
+    pool.address,
     1,
   ])
   const proxy = await deploy("TransparentUpgradeableProxy", [
@@ -173,6 +179,8 @@ export async function movementWorld(count = 4) {
   ])
   const bridge = implementation.attach(proxy.address)
   const frost = await ethers.getContractAt("IFrostBridge", proxy.address)
+  await legacyRegistry.bindWalletOwner(proxy.address)
+  await pool.authorize(proxy.address)
   await bank.updateBridge(proxy.address)
   await bridge.setSpvMaintainerStatus(owner.address, true)
   await bridge.updateDepositParameters(10000, 100, 2000, 30)
@@ -439,7 +447,9 @@ export async function movementWorld(count = 4) {
     bridge,
     frost,
     proxy,
+    pool,
     registry,
+    legacyRegistry,
     wallets,
     layout,
     self,

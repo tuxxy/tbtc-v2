@@ -3,6 +3,7 @@ pragma solidity 0.8.17;
 
 import "../bridge/BridgeState.sol";
 import "../bridge/BitcoinTx.sol";
+import "../bridge/Wallets.sol";
 import "./FrostCustody.sol";
 import "./FrostWallets.sol";
 import "./FrostFundingState.sol";
@@ -53,6 +54,7 @@ library FrostMovement {
     event FrostMovingFundsBelowDust(bytes32 indexed walletId, uint64 value);
     event FrostWalletReopened(bytes32 indexed walletId);
     event FrostDepositExpired(bytes32 indexed depositKey);
+    event FrostDrainReleased(bytes20 indexed source);
 
     /// @notice Commit the targets of a FROST wallet in MovingFunds. Any seat
     /// operator may submit. The commitment is accepted once per period.
@@ -253,7 +255,7 @@ library FrostMovement {
         }
     }
 
-    /// @dev Records one output as its target's pending incoming obligation.
+    /// @dev Shared by the FROST and the legacy drain proofs.
     function recordIncoming(
         BridgeState.Storage storage self,
         bytes32 targetId,
@@ -583,6 +585,27 @@ library FrostMovement {
         deposit.expiredAt = uint64(block.timestamp);
         self.frostFunding.pendingReveals[deposit.terms.fullWalletId]--;
         emit FrostDepositExpired(key);
+    }
+
+    /// @notice Release the inbound obligations of a legacy drain commitment
+    /// whose source left MovingFunds unproven (moving funds timeout). The
+    /// legacy proof path is closed for it, so no output can arrive.
+    function releaseDrain(BridgeState.Storage storage self, bytes20 source)
+        external
+    {
+        bytes20[] storage targets = self.frostMovement.drainTargets[source];
+        require(
+            targets.length > 0 &&
+                self.registeredWallets[source].state !=
+                Wallets.WalletState.MovingFunds,
+            "FROST drain release state"
+        );
+        for (uint256 i = 0; i < targets.length; i++)
+            self.frostMovement.inboundCommitments[
+                self.frost.wallets[targets[i]].id
+            ]--;
+        delete self.frostMovement.drainTargets[source];
+        emit FrostDrainReleased(source);
     }
 
     /// @dev Obligations that block a commitment or a dust closure.

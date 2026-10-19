@@ -5,9 +5,15 @@ import "../bridge/BridgeState.sol";
 import "./IFrostMovementBridge.sol";
 import "./FrostMovement.sol";
 
+interface IFrostMovementGovernance {
+    function governance() external view returns (address);
+}
+
 /// @notice Selector dispatch for the C-06 entrypoints, reached from the end of
 /// FrostBridge.dispatch so FrostBridge stays within its size limit.
 library FrostMovementDispatch {
+    event FrostDrainEnabled(bool enabled);
+
     function dispatch(BridgeState.Storage storage self, bytes calldata input)
         external
         returns (bytes memory)
@@ -77,6 +83,29 @@ library FrostMovementDispatch {
         ) {
             FrostMovement.expireDeposit(self, abi.decode(args, (bytes32)));
         } else if (
+            selector ==
+            IFrostMovementBridge.releaseFrostDrainCommitment.selector
+        ) {
+            FrostMovement.releaseDrain(self, abi.decode(args, (bytes20)));
+        } else if (
+            selector == IFrostMovementBridge.frostDrainTargets.selector
+        ) {
+            return
+                abi.encode(
+                    self.frostMovement.drainTargets[abi.decode(args, (bytes20))]
+                );
+        } else if (
+            selector == IFrostMovementBridge.setFrostDrainEnabled.selector
+        ) {
+            require(
+                msg.sender ==
+                    IFrostMovementGovernance(address(this)).governance(),
+                "Caller is not governance"
+            );
+            bool enabled = abi.decode(args, (bool));
+            self.frostMovement.drainEnabled = enabled;
+            emit FrostDrainEnabled(enabled);
+        } else if (
             selector == IFrostMovementBridge.frostMovingFundsCommitment.selector
         ) {
             (bytes32 id, uint32 period) = abi.decode(args, (bytes32, uint32));
@@ -106,7 +135,8 @@ library FrostMovementDispatch {
                 abi.encode(
                     self.frostMovement.pendingIncoming[id],
                     self.frostMovement.inboundCommitments[id],
-                    self.frostMovement.eligibleTargets
+                    self.frostMovement.eligibleTargets,
+                    self.frostMovement.drainEnabled
                 );
         } else {
             revert("FROST unknown selector");

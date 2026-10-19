@@ -341,7 +341,7 @@ library BridgeState {
         FrostFundingState.Storage frostFunding;
         FrostRedemptionState.Storage frostRedemptions;
         FrostMovementState.Storage frostMovement;
-        uint256[16] __gap;
+        uint256[15] __gap;
     }
 
     event DepositParametersUpdated(

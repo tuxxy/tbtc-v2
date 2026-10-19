@@ -51,8 +51,13 @@ library FrostMovementState {
         mapping(bytes32 => uint64) pendingIncoming;
         // Committed but unproven movements naming the target, per wallet ID.
         mapping(bytes32 => uint64) inboundCommitments;
+        // FROST targets of a legacy source's drain commitment, until proven
+        // or released after the source leaves MovingFunds.
+        mapping(bytes20 => bytes20[]) drainTargets;
         // FROST wallets that may be named by a new commitment.
         uint64 eligibleTargets;
+        // Legacy ECDSA sources may commit to FROST targets (G-F gate).
+        bool drainEnabled;
     }
 
     function commitmentKey(bytes32 walletId, uint32 period)

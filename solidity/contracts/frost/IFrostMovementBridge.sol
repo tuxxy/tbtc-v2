@@ -36,6 +36,8 @@ interface IFrostMovementBridge {
     event FrostMovingFundsBelowDust(bytes32 indexed walletId, uint64 value);
     event FrostWalletReopened(bytes32 indexed walletId);
     event FrostDepositExpired(bytes32 indexed depositKey);
+    event FrostDrainReleased(bytes20 indexed source);
+    event FrostDrainEnabled(bool enabled);
 
     function submitFrostMovingFundsCommitment(
         bytes32 walletId,
@@ -65,6 +67,15 @@ interface IFrostMovementBridge {
 
     function notifyFrostDepositExpired(bytes32 depositKey) external;
 
+    function setFrostDrainEnabled(bool enabled) external;
+
+    function releaseFrostDrainCommitment(bytes20 source) external;
+
+    function frostDrainTargets(bytes20 source)
+        external
+        view
+        returns (bytes20[] memory);
+
     function frostMovingFundsCommitment(bytes32 walletId, uint32 period)
         external
         view
@@ -86,6 +97,7 @@ interface IFrostMovementBridge {
         returns (
             uint64 pendingIncoming,
             uint64 inboundCommitments,
-            uint64 eligibleTargets
+            uint64 eligibleTargets,
+            bool drainEnabled
         );
 }
