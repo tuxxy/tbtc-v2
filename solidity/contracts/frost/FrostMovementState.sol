@@ -20,6 +20,11 @@ library FrostMovementState {
         uint64 committedAt;
         uint64 provenAt;
         bool escalated;
+        // Set when another proven spend consumed the committed main.
+        bool retired;
+        // The movingFundsTxMaxTotalFee in force at commitment: the fee policy
+        // this commitment authorizes, for its proof and its C-08 defense.
+        uint64 maxFee;
         bytes20[] targets;
         bytes32[] descriptorHashes;
     }
@@ -51,9 +56,12 @@ library FrostMovementState {
         mapping(bytes32 => uint64) pendingIncoming;
         // Committed but unproven movements naming the target, per wallet ID.
         mapping(bytes32 => uint64) inboundCommitments;
-        // FROST targets of a legacy source's drain commitment, until proven
-        // or released after the source leaves MovingFunds.
+        // FROST targets of a legacy source's drain commitment and their
+        // descriptor hashes at commitment, until proven or released by a
+        // proven conflicting spend of the legacy main. The legacy commitment
+        // hash keeps its legacy format, so legacy validators read it as is.
         mapping(bytes20 => bytes20[]) drainTargets;
+        mapping(bytes20 => bytes32[]) drainDescriptorHashes;
         // FROST wallets that may be named by a new commitment.
         uint64 eligibleTargets;
         // Legacy ECDSA sources may commit to FROST targets (G-F gate).

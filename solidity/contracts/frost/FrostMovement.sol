@@ -53,8 +53,11 @@ library FrostMovement {
     event FrostIncomingEscalated(bytes32 indexed outpoint);
     event FrostMovingFundsBelowDust(bytes32 indexed walletId, uint64 value);
     event FrostWalletReopened(bytes32 indexed walletId);
-    event FrostDepositExpired(bytes32 indexed depositKey);
     event FrostDrainReleased(bytes20 indexed source);
+    event FrostMovingFundsCommitmentRetired(
+        bytes32 indexed walletId,
+        uint32 period
+    );
 
     /// @notice Commit the targets of a FROST wallet in MovingFunds. Any seat
     /// operator may submit. The commitment is accepted once per period.
@@ -123,6 +126,7 @@ library FrostMovement {
             movement.inboundCommitments[target.id]++;
         }
         commitment.mainOutpoint = custody.mainOutpoint;
+        commitment.maxFee = self.movingFundsTxMaxTotalFee;
         /* solhint-disable-next-line not-rely-on-time */
         commitment.committedAt = uint64(block.timestamp);
         emit FrostMovingFundsCommitted(
@@ -154,6 +158,7 @@ library FrostMovement {
                 source.id == walletId &&
                 commitment.mainOutpoint != bytes32(0) &&
                 commitment.provenAt == 0 &&
+                !commitment.retired &&
                 (source.state == FrostWallets.State.MovingFunds ||
                     source.state == FrostWallets.State.Terminated),
             "FROST movement commitment"
@@ -186,8 +191,7 @@ library FrostMovement {
             txHash
         );
         require(
-            total <= mainValue &&
-                mainValue - total <= self.movingFundsTxMaxTotalFee,
+            total <= mainValue && mainValue - total <= commitment.maxFee,
             "FROST movement fee"
         );
         self.frostCustody.outputs[main].spent = true;
@@ -357,6 +361,7 @@ library FrostMovement {
             custody.value -= self.frostCustody.outputs[main].value;
             custody.mainOutpoint = bytes32(0);
             self.spentMainUTXOs[uint256(main)] = true;
+            onMainSpent(self, walletId, main);
         }
         require(
             !self.spentMainUTXOs[uint256(FrostCustody.outpointKey(txHash, 0))],
@@ -370,21 +375,9 @@ library FrostMovement {
             0,
             value
         );
-        if (state == FrostWallets.State.ReadyUnfunded) {
+        if (state == FrostWallets.State.ReadyUnfunded)
             wallet.state = FrostWallets.State.Live;
-        } else if (state == FrostWallets.State.Closing) {
-            // A late arrival reopens the wallet: its new main must move again.
-            wallet.state = FrostWallets.State.MovingFunds;
-            FrostMovementState.Lifecycle storage lifecycle = self
-                .frostMovement
-                .lifecycles[walletId];
-            lifecycle.period += 1;
-            /* solhint-disable-next-line not-rely-on-time */
-            lifecycle.movingFundsRequestedAt = uint64(block.timestamp);
-            lifecycle.closingStartedAt = 0;
-            lifecycle.dust = false;
-            emit FrostWalletReopened(walletId);
-        }
+        else reopen(self, walletId);
         emit FrostMovedFundsSwept(walletId, txHash, value);
     }
 
@@ -561,51 +554,84 @@ library FrostMovement {
         emit FrostMovingFundsBelowDust(walletId, value);
     }
 
-    /// @notice Stop counting a revealed, unswept deposit past its refund
-    /// locktime. The depositor can refund it without operators; a later sweep
-    /// of it is still credited but does not decrement the count again.
-    function expireDeposit(BridgeState.Storage storage self, bytes32 key)
-        external
-    {
-        FrostFundingState.Deposit storage deposit = self.frostFunding.deposits[
-            key
-        ];
-        require(
-            deposit.revealedAt != 0 &&
-                deposit.sweptAt == 0 &&
-                deposit.expiredAt == 0,
-            "FROST deposit expiry state"
-        );
-        require(
-            /* solhint-disable-next-line not-rely-on-time */
-            block.timestamp > deposit.terms.refundLocktime,
-            "FROST deposit not expired"
-        );
-        /* solhint-disable-next-line not-rely-on-time */
-        deposit.expiredAt = uint64(block.timestamp);
-        self.frostFunding.pendingReveals[deposit.terms.fullWalletId]--;
-        emit FrostDepositExpired(key);
-    }
-
-    /// @notice Release the inbound obligations of a legacy drain commitment
-    /// whose source left MovingFunds unproven (moving funds timeout). The
-    /// legacy proof path is closed for it, so no output can arrive.
-    function releaseDrain(BridgeState.Storage storage self, bytes20 source)
-        external
-    {
+    /// @notice Release a legacy drain's inbound obligations once Bitcoin
+    /// excludes its arrival: a proven transaction spends the committed legacy
+    /// main and pays none of the committed FROST targets. An Ethereum timeout
+    /// alone is not evidence; until then the drain can still be proven late.
+    function releaseDrainOnConflict(
+        BridgeState.Storage storage self,
+        bytes20 source,
+        BitcoinTx.UTXO calldata main,
+        BitcoinTx.Info calldata transaction,
+        BitcoinTx.Proof calldata proof
+    ) external {
         bytes20[] storage targets = self.frostMovement.drainTargets[source];
         require(
             targets.length > 0 &&
-                self.registeredWallets[source].state !=
-                Wallets.WalletState.MovingFunds,
+                keccak256(
+                    abi.encodePacked(
+                        main.txHash,
+                        main.txOutputIndex,
+                        main.txOutputValue
+                    )
+                ) ==
+                self.registeredWallets[source].mainUtxoHash,
             "FROST drain release state"
         );
+        BitcoinTx.validateProof(self, transaction, proof);
+        require(
+            spendsOutpoint(
+                transaction.inputVector,
+                main.txHash,
+                main.txOutputIndex
+            ),
+            "FROST drain conflict input"
+        );
+        bytes memory outputs = transaction.outputVector;
+        (, uint256 count) = outputs.parseVarInt();
+        for (uint256 i = 0; i < count; i++) {
+            bytes memory output = outputs.extractOutputAtIndex(i);
+            if (
+                output.length != 43 ||
+                output[8] != 0x22 ||
+                output[9] != 0x51 ||
+                output[10] != 0x20
+            ) continue;
+            bytes32 q = output.slice(11, 32).toBytes32();
+            for (uint256 j = 0; j < targets.length; j++)
+                require(
+                    self.frost.wallets[targets[j]].descriptor.outputKey != q,
+                    "FROST drain conflict pays a target"
+                );
+        }
         for (uint256 i = 0; i < targets.length; i++)
             self.frostMovement.inboundCommitments[
                 self.frost.wallets[targets[i]].id
             ]--;
         delete self.frostMovement.drainTargets[source];
+        delete self.frostMovement.drainDescriptorHashes[source];
         emit FrostDrainReleased(source);
+    }
+
+    function spendsOutpoint(
+        bytes memory inputs,
+        bytes32 txHash,
+        uint32 index
+    ) private pure returns (bool) {
+        (, uint256 count) = inputs.parseVarInt();
+        for (uint256 i = 0; i < count; i++) {
+            bytes memory outpoint = inputs
+                .extractInputAtIndex(i)
+                .extractOutpoint();
+            uint32 outputIndex;
+            for (uint256 j = 0; j < 4; j++)
+                outputIndex |= uint32(uint8(outpoint[32 + j])) << uint32(8 * j);
+            if (
+                outpoint.slice(0, 32).toBytes32() == txHash &&
+                outputIndex == index
+            ) return true;
+        }
+        return false;
     }
 
     /// @dev Obligations that block a commitment or a dust closure.
@@ -613,15 +639,72 @@ library FrostMovement {
         private
         view
     {
+        // Revealed deposits do not block: a reveal is unproven on Bitcoin and
+        // its refund time is the depositor's choice, so it cannot hold the
+        // wallet. A late sweep of a real deposit reopens the wallet instead.
         require(
             self.frostCustody.wallets[walletId].activeReservation ==
                 bytes32(0) &&
                 self.frostRedemptions.ledger.escrow[walletId] == 0 &&
                 self.frostMovement.pendingIncoming[walletId] == 0 &&
-                self.frostMovement.inboundCommitments[walletId] == 0 &&
-                self.frostFunding.pendingReveals[walletId] == 0,
+                self.frostMovement.inboundCommitments[walletId] == 0,
             "FROST movement obligations"
         );
+    }
+
+    /// @dev A proven spend consumed a wallet's main. An unproven commitment
+    /// of that main can never be proven: retire it, release its targets'
+    /// inbound obligations and open the next period. The retired commitment
+    /// stays stored for the C-08 defense of any signature made under it.
+    function onMainSpent(
+        BridgeState.Storage storage self,
+        bytes32 walletId,
+        bytes32 main
+    ) internal {
+        FrostMovementState.Storage storage movement = self.frostMovement;
+        FrostMovementState.Commitment storage commitment = FrostMovementState
+            .current(movement, walletId);
+        if (
+            commitment.mainOutpoint != main ||
+            commitment.provenAt != 0 ||
+            commitment.retired
+        ) return;
+        commitment.retired = true;
+        for (uint256 i = 0; i < commitment.targets.length; i++)
+            movement.inboundCommitments[
+                self.frost.wallets[commitment.targets[i]].id
+            ]--;
+        FrostMovementState.Lifecycle storage lifecycle = movement.lifecycles[
+            walletId
+        ];
+        emit FrostMovingFundsCommitmentRetired(walletId, lifecycle.period);
+        lifecycle.period += 1;
+    }
+
+    /// @dev New custody was credited (a late incoming or deposit sweep). A
+    /// Closing or Closed wallet returns to MovingFunds in a new period, and
+    /// recorded dust is cleared in any state, so the credited value can move
+    /// again. Closing deleted nothing.
+    function reopen(BridgeState.Storage storage self, bytes32 walletId)
+        internal
+    {
+        FrostWallets.Wallet storage wallet = self.frost.wallets[
+            bytes20(walletId)
+        ];
+        FrostMovementState.Lifecycle storage lifecycle = self
+            .frostMovement
+            .lifecycles[walletId];
+        bool closed = wallet.state == FrostWallets.State.Closing ||
+            wallet.state == FrostWallets.State.Closed;
+        if (!closed && !lifecycle.dust) return;
+        lifecycle.period += 1;
+        lifecycle.dust = false;
+        if (!closed) return;
+        wallet.state = FrostWallets.State.MovingFunds;
+        /* solhint-disable-next-line not-rely-on-time */
+        lifecycle.movingFundsRequestedAt = uint64(block.timestamp);
+        lifecycle.closingStartedAt = 0;
+        emit FrostWalletReopened(walletId);
     }
 
     function inputKey(bytes memory inputs, uint256 offset)

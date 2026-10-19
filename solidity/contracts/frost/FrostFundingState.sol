@@ -40,8 +40,6 @@ library FrostFundingState {
         uint64 maximumSweepFee;
         uint64 revealedAt;
         uint64 sweptAt;
-        // C-06: set once when an unswept deposit passes its refund locktime.
-        uint64 expiredAt;
     }
     struct Storage {
         mapping(bytes32 => Deposit) deposits;

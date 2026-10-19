@@ -12,7 +12,9 @@ import {
   transaction,
   inclusion,
   p2tr,
+  p2wpkh,
   outpoint,
+  deploy,
   ascending,
   split,
   World,
@@ -82,6 +84,48 @@ describe("C-06 FROST movement and receiving sweeps", () => {
         32
       )
     )) !== ZERO
+  const depositSweep = (
+    x: Wallet,
+    inputs: [string, number][],
+    value: number,
+    includeMain: boolean
+  ) => {
+    const tx = transaction(inputs, [{ value, script: p2tr(x.q) }])
+    return {
+      tx,
+      send: () =>
+        w.frost.submitFrostDepositSweepProof({
+          walletId: x.id,
+          transaction: tx.tx,
+          proof: inclusion(tx.hash),
+          includeMain,
+          vault: ethers.constants.AddressZero,
+        }),
+    }
+  }
+  /// The world's moving funds parameters with another movingFundsTxMaxTotalFee.
+  const setMoveFee = (fee: number) =>
+    w.bridge.updateMovingFundsParameters(
+      fee,
+      20000,
+      3600,
+      7 * 86400,
+      0,
+      0,
+      0,
+      5000,
+      10 * 86400,
+      0,
+      0
+    )
+  /// A reveal whose funding transaction is never swept, with the largest
+  /// refund locktime (2106).
+  const fabricatedReveal = async (x: Wallet) =>
+    w.reveal(x, 50000, 0xffffffff - (await w.now()))
+  const pendingReveals = (x: Wallet) =>
+    w.readField(
+      w.entry(w.child(w.child(w.self, "frostFunding"), "pendingReveals"), x.id)
+    )
 
   before(async () => {
     w = await movementWorld(4)
@@ -380,10 +424,14 @@ describe("C-06 FROST movement and receiving sweeps", () => {
   it("records a below-dust main only when every other obligation is clear", async () => {
     const small = targets[2]
     await w.fund(small, 15000)
-    // A deposit revealed while Live, still unswept, blocks dust closure
-    // until it expires. Reveals stop once the wallet leaves Live.
-    const pending = await w.reveal(small, 50000, 3600)
+    // The source holds a deposit revealed while Live, then commits to all
+    // three targets: small owes an inbound commitment.
+    await w.setState(source, State.Live)
+    const funding = await w.reveal(source, 50000)
+    await w.setState(source, State.MovingFunds)
+    await commit(targets)
     await w.enterMovingFunds(small)
+    // Reveals stop once the wallet leaves Live.
     await expect(w.reveal(small, 50000, 3600)).to.be.revertedWith(
       "FROST deposit wallet"
     )
@@ -393,8 +441,19 @@ describe("C-06 FROST movement and receiving sweeps", () => {
     await expect(
       w.frost.notifyFrostMovingFundsBelowDust(source.id)
     ).to.be.revertedWith("FROST movement dust state")
-    await advance(3601)
-    await w.frost.notifyFrostDepositExpired(outpoint(pending.hash, 0))
+    // The source's proven deposit sweep spends its committed main, which
+    // retires the commitment and releases small's inbound obligation.
+    const sweep = depositSweep(
+      source,
+      [
+        [(source.main as Tx).hash, 0],
+        [funding.hash, 0],
+      ],
+      source.value + 49000,
+      true
+    )
+    await sweep.send()
+    expect((await counters(small)).inbound).to.equal(0)
     await expect(w.frost.notifyFrostMovingFundsBelowDust(small.id))
       .to.emit(w.frost, "FrostMovingFundsBelowDust")
       .withArgs(small.id, 14000)
@@ -404,57 +463,171 @@ describe("C-06 FROST movement and receiving sweeps", () => {
     expect(lifecycle.closingStartedAt).to.not.equal(0)
     // The dust main stays recorded custody; nothing is deleted.
     expect((await w.frost.frostWalletCustody(small.id)).value).to.equal(14000)
+    await expect(
+      w.frost.notifyFrostMovingFundsBelowDust(small.id)
+    ).to.be.revertedWith("FROST movement dust state")
   })
 
-  it("expires a revealed deposit past its refund locktime once and unblocks the source", async () => {
-    // Revealed while Live; the wallet then entered MovingFunds.
+  it("does not let a fabricated reveal that is never swept block the source's commitment", async () => {
+    // Reviewer: an unproven reveal with refundLocktime 0xffffffff, made while
+    // the source was Live, blocked its movement until 2106.
     await w.setState(source, State.Live)
-    const funding = await w.reveal(source, 50000, 3600)
+    const fake = await fabricatedReveal(source)
     await w.setState(source, State.MovingFunds)
-    const key = outpoint(funding.hash, 0)
-    await expect(commit(targets)).to.be.revertedWith(
-      "FROST movement obligations"
+    expect(
+      (await w.deposit(outpoint(fake.hash, 0))).terms.refundLocktime
+    ).to.equal(0xffffffff)
+    expect(await pendingReveals(source)).to.equal(1)
+    await expect(commit(targets)).to.emit(w.frost, "FrostMovingFundsCommitted")
+    await expect(prove(movement(targets))).to.emit(
+      w.frost,
+      "FrostMovingFundsCompleted"
     )
-    await expect(w.frost.notifyFrostDepositExpired(key)).to.be.revertedWith(
-      "FROST deposit not expired"
-    )
-    await advance(3601)
-    await expect(w.frost.notifyFrostDepositExpired(key))
-      .to.emit(w.frost, "FrostDepositExpired")
-      .withArgs(key)
-    await expect(w.frost.notifyFrostDepositExpired(key)).to.be.revertedWith(
-      "FROST deposit expiry state"
-    )
-    expect((await w.deposit(key)).expiredAt).to.be.gt(0)
-    await commit(targets)
+    expect(await w.state(source)).to.equal(State.Closing)
+    // The reveal stays recorded; it simply does not hold the wallet.
+    expect(await pendingReveals(source)).to.equal(1)
   })
 
-  it("does not decrement pending reveals twice when an expired deposit is still swept", async () => {
-    const t = targets[0]
-    const first = await w.reveal(t, 50000, 3600)
-    const second = await w.reveal(t, 50000, 86400)
-    await advance(3601)
-    await w.frost.notifyFrostDepositExpired(outpoint(first.hash, 0))
-    const sweep = transaction(
+  it("does not let a fabricated reveal that is never swept block a dust closure", async () => {
+    const small = targets[2]
+    await w.fund(small, 15000)
+    const fake = await fabricatedReveal(small)
+    await w.enterMovingFunds(small)
+    expect(
+      (await w.deposit(outpoint(fake.hash, 0))).terms.refundLocktime
+    ).to.equal(0xffffffff)
+    expect(await pendingReveals(small)).to.equal(1)
+    await expect(w.frost.notifyFrostMovingFundsBelowDust(small.id))
+      .to.emit(w.frost, "FrostMovingFundsBelowDust")
+      .withArgs(small.id, 14000)
+    expect(await w.state(small)).to.equal(State.Closing)
+    expect((await w.frost.frostWalletLifecycle(small.id)).dust).to.equal(true)
+  })
+
+  it("retires an unproven commitment whose main a proven deposit sweep spent and accepts a new one", async () => {
+    // A deposit revealed while Live; the source then entered MovingFunds.
+    await w.setState(source, State.Live)
+    const funding = await w.reveal(source, 50000)
+    await w.setState(source, State.MovingFunds)
+    const oldMain = source.main as Tx
+    await commit(targets)
+    const old = movement(targets)
+    for (const t of targets) expect((await counters(t)).inbound).to.equal(1)
+
+    // The deposit sweep spends the committed main together with the deposit.
+    const value = source.value + 49000
+    const sweep = depositSweep(
+      source,
       [
-        [first.hash, 0],
-        [second.hash, 0],
+        [oldMain.hash, 0],
+        [funding.hash, 0],
       ],
-      [{ value: 99000, script: p2tr(t.q) }]
+      value,
+      true
     )
-    // pendingReveals is 1 here; consuming both deposits must leave it at 0.
-    await w.frost.submitFrostDepositSweepProof({
-      walletId: t.id,
-      transaction: sweep.tx,
-      proof: inclusion(sweep.hash),
-      includeMain: false,
-      vault: ethers.constants.AddressZero,
-    })
-    const pending = w.entry(
-      w.child(w.child(w.self, "frostFunding"), "pendingReveals"),
-      t.id
+    await expect(sweep.send())
+      .to.emit(w.frost, "FrostMovingFundsCommitmentRetired")
+      .withArgs(source.id, 0)
+    const retired = await w.commitment(source, 0)
+    expect(retired.retired).to.equal(true)
+    expect(retired.provenAt).to.equal(0)
+    expect(retired.mainOutpoint).to.equal(oldMain.key())
+    expect(retired.targets).to.deep.equal(targets.map((t) => t.label))
+    const lifecycle = await w.frost.frostWalletLifecycle(source.id)
+    expect(lifecycle.period).to.equal(1)
+    expect(await w.state(source)).to.equal(State.MovingFunds)
+    for (const t of targets) expect((await counters(t)).inbound).to.equal(0)
+    const custody = await w.frost.frostWalletCustody(source.id)
+    expect(custody.value).to.equal(value)
+    expect(custody.mainOutpoint).to.equal(sweep.tx.key())
+    expect(await spent(oldMain.key())).to.equal(true)
+    // The old movement can never be proven.
+    await expect(prove(old)).to.be.revertedWith("FROST movement commitment")
+
+    // A new commitment of the new main in the new period.
+    await expect(commit(targets)).to.emit(w.frost, "FrostMovingFundsCommitted")
+    const fresh = await w.commitment(source)
+    expect(fresh.mainOutpoint).to.equal(sweep.tx.key())
+    expect(fresh.retired).to.equal(false)
+    for (const t of targets) expect((await counters(t)).inbound).to.equal(1)
+    await expect(prove(old)).to.be.revertedWith("FROST movement input")
+    const values = split(value - MOVE_FEE, 3)
+    const next = movement(targets, values, [[sweep.tx.hash, 0]])
+    await expect(prove(next)).to.emit(w.frost, "FrostMovingFundsCompleted")
+    expect(await w.state(source)).to.equal(State.Closing)
+    expect((await w.commitment(source, 1)).provenAt).to.not.equal(0)
+    expect((await w.commitment(source, 0)).retired).to.equal(true)
+    for (let i = 0; i < 3; i++) {
+      const incoming = await w.frost.frostIncoming(next.key(i))
+      expect(incoming.target).to.equal(targets[i].id)
+      expect(incoming.value).to.equal(values[i])
+      expect(await counters(targets[i])).to.deep.include({
+        pending: 1,
+        inbound: 0,
+      })
+    }
+  })
+
+  it("reopens a dust-closed wallet that proves a late deposit sweep", async () => {
+    // Reviewer: a 14,000-sat dust wallet sweeping an expired 50,000-sat
+    // deposit stayed Closing with dust recorded.
+    const small = targets[2]
+    const smallMain = await w.fund(small, 15000)
+    const funding = await w.reveal(small, 50000, 3600)
+    await w.enterMovingFunds(small)
+    await w.frost.notifyFrostMovingFundsBelowDust(small.id)
+    expect(await w.state(small)).to.equal(State.Closing)
+    // Past the deposit's refund locktime the depositor could have refunded;
+    // the wallet swept it first.
+    await advance(3601)
+    const sweep = depositSweep(
+      small,
+      [
+        [smallMain.hash, 0],
+        [funding.hash, 0],
+      ],
+      14000 + 49000,
+      true
     )
-    expect(await w.readField(pending)).to.equal(0)
+    await expect(sweep.send())
+      .to.emit(w.frost, "FrostWalletReopened")
+      .withArgs(small.id)
+    expect(await w.state(small)).to.equal(State.MovingFunds)
+    const lifecycle = await w.frost.frostWalletLifecycle(small.id)
+    expect(lifecycle.period).to.equal(1)
+    expect(lifecycle.dust).to.equal(false)
+    expect(lifecycle.closingStartedAt).to.equal(0)
+    expect(lifecycle.movingFundsRequestedAt).to.equal(await w.now())
+    const custody = await w.frost.frostWalletCustody(small.id)
+    expect(custody.value).to.equal(63000)
+    expect(custody.mainOutpoint).to.equal(sweep.tx.key())
+    // The credited value must move again: a commitment is accepted.
+    const [first] = targets
+    await w.frost
+      .connect(w.operator)
+      .submitFrostMovingFundsCommitment(small.id, 0, [first.label])
+    const c = await w.commitment(small)
+    expect(c.mainOutpoint).to.equal(sweep.tx.key())
+    expect(c.targets).to.deep.equal([first.label])
+  })
+
+  it("checks a movement fee against the cap in force at commitment", async () => {
+    await commit(targets)
+    expect((await w.commitment(source)).maxFee).to.equal(5000)
+    const over = movement(targets, split(source.value - 6000, 3))
+    // Governance lowers the cap after commitment.
+    await setMoveFee(1000)
+    await expect(prove(over)).to.be.revertedWith("FROST movement fee")
+    // Raising it does not widen the committed cap either.
+    await setMoveFee(8000)
+    await expect(prove(over)).to.be.revertedWith("FROST movement fee")
+    await setMoveFee(1000)
+    // MOVE_FEE (3,000) fits the committed 5,000 cap though the current is 1,000.
+    await expect(prove(movement(targets))).to.emit(
+      w.frost,
+      "FrostMovingFundsCompleted"
+    )
+    expect(await w.state(source)).to.equal(State.Closing)
   })
 })
 
@@ -516,6 +689,25 @@ describe("C-06 legacy routes: ECDSA to FROST drain and the stranded case", () =>
       )
   }
   const members = [1, 2, 3]
+  /// A gated drain of a 400,000-sat legacy main into two FROST targets, and
+  /// its unproven drain transaction.
+  const drain = async () => {
+    const pkh = await legacyWallet()
+    const main = await legacyMain(pkh, 400000)
+    await legacyState(pkh, LegacyState.MovingFunds)
+    await w.frost.setFrostDrainEnabled(true)
+    const targets = ascending(w.wallets).slice(0, 2)
+    const labels = targets.map((t) => t.label)
+    await w.bridge
+      .connect(w.operator)
+      .submitMovingFundsCommitment(pkh, main, members, 0, labels)
+    const values = split(400000 - 3000, 2)
+    const tx = transaction(
+      [[main.txHash, 0]],
+      targets.map((t, i) => ({ value: values[i], script: p2tr(t.q) }))
+    )
+    return { pkh, main, targets, labels, values, tx }
+  }
 
   before(async () => {
     w = await movementWorld(3)
@@ -606,36 +798,161 @@ describe("C-06 legacy routes: ECDSA to FROST drain and the stranded case", () =>
     }
   })
 
-  it("releases the inbound obligations of a drain whose source timed out unproven", async () => {
-    const pkh = await legacyWallet()
-    const main = await legacyMain(pkh, 400000)
-    await legacyState(pkh, LegacyState.MovingFunds)
-    await w.frost.setFrostDrainEnabled(true)
-    const targets = ascending(w.wallets).slice(0, 2)
-    await w.bridge.connect(w.operator).submitMovingFundsCommitment(
-      pkh,
-      main,
-      members,
-      0,
-      targets.map((t) => t.label)
+  it("keeps the legacy commitment hash for a drain, so the legacy proposal validator accepts it", async () => {
+    const { pkh, main, labels } = await drain()
+    // Reviewer: the validator reverted on the old drain hash.
+    expect(
+      (await w.bridge.wallets(pkh)).movingFundsTargetWalletsCommitmentHash
+    ).to.equal(ethers.utils.solidityKeccak256(["bytes20[]"], [labels]))
+    const validator = await deploy("WalletProposalValidator", [w.proxy.address])
+    expect(
+      await validator.validateMovingFundsProposal(
+        {
+          walletPubKeyHash: pkh,
+          movingFundsTxFee: 3000,
+          targetWallets: labels,
+        },
+        main
+      )
+    ).to.equal(true)
+    await expect(
+      validator.validateMovingFundsProposal(
+        {
+          walletPubKeyHash: pkh,
+          movingFundsTxFee: 3000,
+          targetWallets: labels.slice(0, 1),
+        },
+        main
+      )
+    ).to.be.revertedWith(
+      "Target wallets do not match target wallets commitment hash"
     )
-    await expect(w.frost.releaseFrostDrainCommitment(pkh)).to.be.revertedWith(
-      "FROST drain release state"
-    )
+  })
+
+  it("proves a drain late after its legacy source timed out and records the FROST incoming outputs", async () => {
+    // Reviewer: the old release deleted the obligations without Bitcoin
+    // evidence, though the drain could still confirm.
+    const { pkh, main, targets, values, tx } = await drain()
     await advance(7 * 86400 + 1)
     await w.bridge.notifyMovingFundsTimeout(pkh, members)
     expect(await w.readField(w.child(legacyNode(pkh), "state"))).to.equal(
       LegacyState.Terminated
     )
-    await expect(w.frost.releaseFrostDrainCommitment(pkh))
+    await expect(
+      w.bridge.submitMovingFundsProof(tx.tx, inclusion(tx.hash), main, pkh)
+    ).to.emit(w.bridge, "MovingFundsCompleted")
+    expect(await w.readField(w.child(legacyNode(pkh), "state"))).to.equal(
+      LegacyState.Terminated
+    )
+    expect((await w.bridge.wallets(pkh)).mainUtxoHash).to.equal(ZERO)
+    expect(await w.frost.frostDrainTargets(pkh)).to.deep.equal([])
+    for (let i = 0; i < 2; i++) {
+      const incoming = await w.frost.frostIncoming(tx.key(i))
+      expect(incoming.target).to.equal(targets[i].id)
+      expect(incoming.value).to.equal(values[i])
+      expect(incoming.state).to.equal(Incoming.Pending)
+      const c = await w.frost.frostMovementCounters(targets[i].id)
+      expect(c.inboundCommitments).to.equal(0)
+      expect(c.pendingIncoming).to.equal(1)
+    }
+    await expect(
+      w.bridge.submitMovingFundsProof(tx.tx, inclusion(tx.hash), main, pkh)
+    ).to.be.revertedWith("No main UTXO for given wallet")
+  })
+
+  it("releases a drain's inbound obligations on a proven conflicting spend of the legacy main", async () => {
+    const { pkh, main, targets, tx } = await drain()
+    const [, , other] = ascending(w.wallets)
+    // The legacy main went elsewhere: a P2WPKH and a non-target P2TR output.
+    const conflict = transaction(
+      [[main.txHash, 0]],
+      [
+        { value: 200000, script: p2wpkh(pkh) },
+        { value: 197000, script: p2tr(other.q) },
+      ]
+    )
+    await expect(
+      w.frost.releaseFrostDrainOnConflict(
+        pkh,
+        { ...main, txOutputValue: 1 },
+        conflict.tx,
+        inclusion(conflict.hash)
+      )
+    ).to.be.revertedWith("FROST drain release state")
+    await expect(
+      w.frost.releaseFrostDrainOnConflict(
+        pkh,
+        main,
+        conflict.tx,
+        inclusion(conflict.hash)
+      )
+    )
       .to.emit(w.frost, "FrostDrainReleased")
       .withArgs(pkh)
     for (const t of targets)
       expect(
         (await w.frost.frostMovementCounters(t.id)).inboundCommitments
       ).to.equal(0)
-    await expect(w.frost.releaseFrostDrainCommitment(pkh)).to.be.revertedWith(
-      "FROST drain release state"
+    expect(await w.frost.frostDrainTargets(pkh)).to.deep.equal([])
+    await expect(
+      w.frost.releaseFrostDrainOnConflict(
+        pkh,
+        main,
+        conflict.tx,
+        inclusion(conflict.hash)
+      )
+    ).to.be.revertedWith("FROST drain release state")
+    // The released drain cannot be recorded afterwards.
+    await expect(
+      w.bridge.submitMovingFundsProof(tx.tx, inclusion(tx.hash), main, pkh)
+    ).to.be.revertedWith("FROST drain descriptor")
+  })
+
+  it("refuses a drain release whose transaction pays a committed target or does not spend the main", async () => {
+    const { pkh, main, targets, tx } = await drain()
+    // Any output to a committed target's key is not a conflict.
+    const paysTarget = transaction(
+      [[main.txHash, 0]],
+      [
+        { value: 300000, script: p2wpkh(pkh) },
+        { value: 97000, script: p2tr(targets[1].q) },
+      ]
+    )
+    await expect(
+      w.frost.releaseFrostDrainOnConflict(
+        pkh,
+        main,
+        paysTarget.tx,
+        inclusion(paysTarget.hash)
+      )
+    ).to.be.revertedWith("FROST drain conflict pays a target")
+    // The drain itself pays the targets.
+    await expect(
+      w.frost.releaseFrostDrainOnConflict(pkh, main, tx.tx, inclusion(tx.hash))
+    ).to.be.revertedWith("FROST drain conflict pays a target")
+    const elsewhere = transaction(
+      [
+        [ethers.utils.id("C06 unrelated input"), 0],
+        [main.txHash, 1],
+      ],
+      [{ value: 397000, script: p2wpkh(pkh) }]
+    )
+    await expect(
+      w.frost.releaseFrostDrainOnConflict(
+        pkh,
+        main,
+        elsewhere.tx,
+        inclusion(elsewhere.hash)
+      )
+    ).to.be.revertedWith("FROST drain conflict input")
+    for (const t of targets)
+      expect(
+        (await w.frost.frostMovementCounters(t.id)).inboundCommitments
+      ).to.equal(1)
+    // The drain stays provable.
+    await w.bridge.submitMovingFundsProof(tx.tx, inclusion(tx.hash), main, pkh)
+    expect(await w.readField(w.child(legacyNode(pkh), "state"))).to.equal(
+      LegacyState.Closing
     )
   })
 

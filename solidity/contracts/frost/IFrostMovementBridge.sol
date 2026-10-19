@@ -35,8 +35,11 @@ interface IFrostMovementBridge {
     event FrostIncomingEscalated(bytes32 indexed outpoint);
     event FrostMovingFundsBelowDust(bytes32 indexed walletId, uint64 value);
     event FrostWalletReopened(bytes32 indexed walletId);
-    event FrostDepositExpired(bytes32 indexed depositKey);
     event FrostDrainReleased(bytes20 indexed source);
+    event FrostMovingFundsCommitmentRetired(
+        bytes32 indexed walletId,
+        uint32 period
+    );
     event FrostDrainEnabled(bool enabled);
 
     function submitFrostMovingFundsCommitment(
@@ -65,11 +68,14 @@ interface IFrostMovementBridge {
 
     function notifyFrostMovingFundsBelowDust(bytes32 walletId) external;
 
-    function notifyFrostDepositExpired(bytes32 depositKey) external;
-
     function setFrostDrainEnabled(bool enabled) external;
 
-    function releaseFrostDrainCommitment(bytes20 source) external;
+    function releaseFrostDrainOnConflict(
+        bytes20 source,
+        BitcoinTx.UTXO calldata main,
+        BitcoinTx.Info calldata transaction,
+        BitcoinTx.Proof calldata proof
+    ) external;
 
     function frostDrainTargets(bytes20 source)
         external

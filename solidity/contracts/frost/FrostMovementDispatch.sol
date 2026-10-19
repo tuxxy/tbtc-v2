@@ -79,14 +79,25 @@ library FrostMovementDispatch {
         ) {
             FrostMovement.notifyBelowDust(self, abi.decode(args, (bytes32)));
         } else if (
-            selector == IFrostMovementBridge.notifyFrostDepositExpired.selector
-        ) {
-            FrostMovement.expireDeposit(self, abi.decode(args, (bytes32)));
-        } else if (
             selector ==
-            IFrostMovementBridge.releaseFrostDrainCommitment.selector
+            IFrostMovementBridge.releaseFrostDrainOnConflict.selector
         ) {
-            FrostMovement.releaseDrain(self, abi.decode(args, (bytes20)));
+            (
+                bytes20 source,
+                BitcoinTx.UTXO memory main,
+                BitcoinTx.Info memory transaction,
+                BitcoinTx.Proof memory proof
+            ) = abi.decode(
+                    args,
+                    (bytes20, BitcoinTx.UTXO, BitcoinTx.Info, BitcoinTx.Proof)
+                );
+            FrostMovement.releaseDrainOnConflict(
+                self,
+                source,
+                main,
+                transaction,
+                proof
+            );
         } else if (
             selector == IFrostMovementBridge.frostDrainTargets.selector
         ) {

@@ -18,7 +18,7 @@ are the rules implemented here.
 All FROST entrypoints sit in two new linked libraries, `FrostMovement` and
 `FrostMovementDispatch`, reached from the last branch of
 `FrostBridge.dispatch`. The Bridge bytecode is unchanged (24,271 bytes).
-`MovingFunds` grows to 23,628 bytes for the drain (limit 24,576).
+`MovingFunds` grows to 23,775 bytes for the drain (limit 24,576).
 
 ## What the code establishes
 
@@ -26,7 +26,11 @@ All FROST entrypoints sit in two new linked libraries, `FrostMovement` and
 
 - Accepted once per period from a seat operator of a source in `MovingFunds`.
 - Every obligation must be clear: no active reservation, no redemption
-  escrow, no pending or committed incoming transfer, no pending reveal.
+  escrow, no pending or committed incoming transfer.
+- Revealed deposits never block. A reveal is not proven on Bitcoin and its
+  refund time is the depositor's choice, so it cannot hold a wallet (review
+  finding: a fabricated reveal with `refundLocktime = 0xffffffff` blocked
+  movement until 2106). A later sweep of a real deposit reopens the wallet.
 - The custody main is the whole custody value. A wallet whose custody also
   holds outputs credited during a reservation cannot commit until they are
   merged; see open gates.
@@ -35,18 +39,23 @@ All FROST entrypoints sit in two new linked libraries, `FrostMovement` and
 - Targets are strictly ascending labels, each `isMovementTarget`
   (`ReadyUnfunded` or `Live`, not quarantined, capability version > 0),
   never the source.
-- The commitment stores the main outpoint, the ordered labels and each
-  target's descriptor hash. A label is `bytes20(keccak256(domain ‖ Q))`, so it
+- The commitment stores the main outpoint, the ordered labels, each
+  target's descriptor hash and the `movingFundsTxMaxTotalFee` in force: the fee
+  policy it authorizes, for its proof and its C-08 defense, whatever
+  governance sets later. A label is `bytes20(keccak256(domain ‖ Q))`, so it
   binds the target key. Commitments are kept per lifecycle period for C-08
   defenses.
+- **Retirement.** A proven deposit or incoming sweep that spends the main of
+  an unproven commitment retires it. Its targets' inbound obligations are
+  released and the next period opens, so the new main can be committed. The
+  retired commitment stays readable for C-08 defenses.
 
 **Movement proof.**
 
 - Exactly one input: the committed main, still the custody main, unreserved.
 - Outputs in commitment order, each `OP_1 PUSH32 Q` of its committed target
   with an unchanged descriptor hash.
-- The legacy equal split (`[min, min + remainder]`) and the legacy
-  `movingFundsTxMaxTotalFee`.
+- The legacy equal split (`[min, min + remainder]`) and the committed fee cap.
 - Effects:
   - the main is spent in custody and in `spentMainUTXOs`;
   - every output becomes a pending incoming obligation of its target,
@@ -64,8 +73,13 @@ All FROST entrypoints sit in two new linked libraries, `FrostMovement` and
 - Each incoming key is consumed once, in `spentMainUTXOs`, the replay space
   shared with legacy deposits, legacy mains and FROST custody.
 - No Bank credit: the value was already backed by the source's custody.
-- `ReadyUnfunded` becomes `Live`. A `Closing` target that gains a main
-  returns to `MovingFunds` in a new period: the late arrival reopens it.
+- `ReadyUnfunded` becomes `Live`.
+
+**Reopening.** A `Closing` or `Closed` wallet that gains custody through a
+late incoming or deposit sweep returns to `MovingFunds` in a new period, with
+dust and the closing time cleared, so the credited value moves again. Closing
+deleted nothing, so this is always possible (review findings on #10 and
+#12).
 
 **Timeouts and escalation.**
 
@@ -82,29 +96,28 @@ closing, but only when every other obligation is clear. This is unlike the
 legacy rule, which ignores pending incoming sweeps. The dust output stays
 recorded custody.
 
-**Deposit expiry.** `notifyFrostDepositExpired` stops counting a revealed,
-unswept deposit once `block.timestamp` passes its refund locktime. It
-decrements `pendingReveals` once. A later sweep of that deposit is credited
-and does not decrement again.
-
 **Drain.**
 
 - A legacy commitment whose first target is a FROST label is a drain. It
-  needs `drainEnabled`, names only eligible FROST targets, and hashes
-  `"tbtc-v2/frost-drain-commitment/v1" ‖ labels ‖ descriptor hashes`.
-- Legacy-only commitments keep the legacy hash.
+  needs `drainEnabled` and names only eligible FROST targets.
+- Its commitment hash keeps the legacy format, `keccak256(labels)`, so
+  `WalletProposalValidator` and the keep-core proposal generator read it as
+  is. The targets' descriptor hashes are bound separately and checked
+  output by output in the proof.
 - Drain outputs become FROST incoming obligations, never legacy requests. A
   proof mixing schemes reverts.
-- A drain whose source leaves `MovingFunds` unproven can release its targets'
-  inbound obligations with `releaseFrostDrainCommitment`.
+- A drain whose legacy source timed out can still be proven late: the
+  signed drain may confirm after the timeout.
+- Its targets' inbound obligations are released only by Bitcoin evidence
+  (`releaseFrostDrainOnConflict`): a proven transaction that spends the
+  committed legacy main and pays none of the committed targets' keys.
 
 **Eligibility counter.** `eligibleTargets` is incremented at readiness and
 decremented at quarantine of an eligible wallet. Every later C-09 state change
 out of `ReadyUnfunded` or `Live` must decrement it.
 
-**Storage.** `FrostMovementState.Storage` (seven slots) is taken from the
-Bridge gap, 22 → 15. `FrostFundingState.Deposit` gains `expiredAt` at its
-end (a mapping value, so no slot shift).
+**Storage.** `FrostMovementState.Storage` (eight slots) is taken from the
+Bridge gap, 22 → 14.
 
 ## Evidence
 
@@ -121,7 +134,7 @@ tests cover:
 - the incoming sweep main rule, foreign outputs and fees;
 - both escalations and the timeout reset;
 - dust with pending obligations;
-- deposit expiry, including the no-double-decrement case;
+- reveals that never block, retirement and reopening;
 - the drain behind its gate, mixed outputs and release;
 - the legacy stranded case as a regression.
 

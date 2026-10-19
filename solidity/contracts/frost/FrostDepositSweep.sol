@@ -7,6 +7,7 @@ import "./FrostFundingState.sol";
 import "./FrostCustody.sol";
 import "./FrostSweepResolutionCertificate.sol";
 import "./FrostCancellationHistory.sol";
+import "./FrostMovement.sol";
 import {BTCUtils} from "@keep-network/bitcoin-spv-sol/contracts/BTCUtils.sol";
 import {BytesLib} from "@keep-network/bitcoin-spv-sol/contracts/BytesLib.sol";
 
@@ -226,6 +227,8 @@ library FrostDepositSweep {
         creditSweep(bridge, request, txHash, value, resolutionId);
         if (wallet.state == FrostWallets.State.ReadyUnfunded)
             wallet.state = FrostWallets.State.Live;
+            // A late deposit sweep into a Closing or Closed wallet reopens it.
+        else FrostMovement.reopen(bridge, request.walletId);
         // Effects precede Bank/Vault callbacks; any late failure rolls back all
         // deposit tombstones, pending counters, custody and Bank credits.
         if (
@@ -271,6 +274,12 @@ library FrostDepositSweep {
             main.spent = true;
             balance.value -= main.value;
             bridge.spentMainUTXOs[uint256(balance.mainOutpoint)] = true;
+            // An unproven C-06 commitment of this main can never be proven.
+            FrostMovement.onMainSpent(
+                bridge,
+                request.walletId,
+                balance.mainOutpoint
+            );
             // credit retains the captured version while resolution is active.
             // Keep the old nonzero main pointer until the new output is credited.
             if (resolutionId == bytes32(0)) balance.mainOutpoint = bytes32(0);
@@ -430,8 +439,7 @@ library FrostDepositSweep {
             /* solhint-disable-next-line not-rely-on-time */
             deposit.sweptAt = uint64(block.timestamp);
             bridge.spentMainUTXOs[uint256(key)] = true;
-            if (deposit.expiredAt == 0)
-                funding.pendingReveals[request.walletId]--;
+            funding.pendingReveals[request.walletId]--;
             accounting.inputsValue += deposit.terms.amount;
             accounting.recipients[accounting.processed] = deposit
                 .terms
