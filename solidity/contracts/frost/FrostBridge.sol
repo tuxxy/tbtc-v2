@@ -8,6 +8,7 @@ import "./FrostFundingConfiguration.sol";
 import "./FrostRedemptions.sol";
 import "./FrostRedemptionSettlement.sol";
 import "./FrostRedemptionRequests.sol";
+import "./FrostMovementDispatch.sol";
 
 interface IFrostGovernance {
     function governance() external view returns (address);
@@ -426,6 +427,7 @@ library FrostBridge {
                 generation,
                 capabilityVersion
             );
+            self.frostMovement.eligibleTargets++;
         } else if (selector == IFrostBridge.__snowfallWalletExpired.selector) {
             FrostWallets.expire(self.frost, abi.decode(args, (bytes32)));
         } else if (selector == IFrostBridge.frostRegistry.selector) {
@@ -473,7 +475,7 @@ library FrostBridge {
                     w.state == FrostWallets.State.Live && !w.quarantined
                 );
         } else {
-            revert("FROST unknown selector");
+            return FrostMovementDispatch.dispatch(self, input);
         }
         return bytes("");
     }

@@ -430,7 +430,8 @@ library FrostDepositSweep {
             /* solhint-disable-next-line not-rely-on-time */
             deposit.sweptAt = uint64(block.timestamp);
             bridge.spentMainUTXOs[uint256(key)] = true;
-            funding.pendingReveals[request.walletId]--;
+            if (deposit.expiredAt == 0)
+                funding.pendingReveals[request.walletId]--;
             accounting.inputsValue += deposit.terms.amount;
             accounting.recipients[accounting.processed] = deposit
                 .terms

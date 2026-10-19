@@ -200,6 +200,14 @@ library FrostWallets {
         emit FrostWalletExpired(id);
     }
 
+    /// @notice C-06 eligibility for a new movement commitment target.
+    function isMovementTarget(Wallet storage w) internal view returns (bool) {
+        return
+            (w.state == State.ReadyUnfunded || w.state == State.Live) &&
+            !w.quarantined &&
+            w.capabilityVersion > 0;
+    }
+
     function resolveOutput(Storage storage self, bytes calldata output)
         external
         view
