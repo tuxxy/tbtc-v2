@@ -250,6 +250,7 @@ library FrostDepositSweep {
                 bridge.treasury,
                 accounting.treasuryFee
             );
+        bridge.frostFraud.provenTransactions[txHash] = request.walletId;
         funding.entered = false;
         emit FrostDepositsSwept(request.walletId, txHash, value);
     }

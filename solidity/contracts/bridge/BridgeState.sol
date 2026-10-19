@@ -22,6 +22,7 @@ import "../frost/FrostWallets.sol";
 import "../frost/FrostFundingState.sol";
 import "../frost/FrostRedemptionState.sol";
 import "../frost/FrostMovementState.sol";
+import "../frost/FrostFraudState.sol";
 import "./IRelay.sol";
 import "./Deposit.sol";
 import "./Redemption.sol";
@@ -341,7 +342,8 @@ library BridgeState {
         FrostFundingState.Storage frostFunding;
         FrostRedemptionState.Storage frostRedemptions;
         FrostMovementState.Storage frostMovement;
-        uint256[14] __gap;
+        FrostFraudState.Storage frostFraud;
+        uint256[11] __gap;
     }
 
     event DepositParametersUpdated(

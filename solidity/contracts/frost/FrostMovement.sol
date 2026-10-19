@@ -206,6 +206,7 @@ library FrostMovement {
             movement.lifecycles[walletId].closingStartedAt = commitment
                 .provenAt;
         }
+        self.frostFraud.provenTransactions[txHash] = walletId;
         emit FrostMovingFundsCompleted(walletId, txHash);
     }
 
@@ -378,6 +379,7 @@ library FrostMovement {
         if (state == FrostWallets.State.ReadyUnfunded)
             wallet.state = FrostWallets.State.Live;
         else reopen(self, walletId);
+        self.frostFraud.provenTransactions[txHash] = walletId;
         emit FrostMovedFundsSwept(walletId, txHash, value);
     }
 
