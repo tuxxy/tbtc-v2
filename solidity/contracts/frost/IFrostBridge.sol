@@ -4,11 +4,16 @@ pragma solidity 0.8.17;
 import "./FrostRedemptionState.sol";
 import "./IFrostFundingBridge.sol";
 import "./IFrostMovementBridge.sol";
+import "./IFrostFraudBridge.sol";
 import "./FrostCancellationCertificate.sol";
 import "./FrostCancellationHistory.sol";
 
 /// @notice Explicit ABI for the Bridge's separately linked FROST entrypoints.
-interface IFrostBridge is IFrostFundingBridge, IFrostMovementBridge {
+interface IFrostBridge is
+    IFrostFundingBridge,
+    IFrostMovementBridge,
+    IFrostFraudBridge
+{
     function frostCancellationWinner(bytes32 reservationId)
         external
         view

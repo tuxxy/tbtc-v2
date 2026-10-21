@@ -4,6 +4,7 @@ pragma solidity 0.8.17;
 import "../bridge/BridgeState.sol";
 import "./IFrostMovementBridge.sol";
 import "./FrostMovement.sol";
+import "./FrostFraudDispatch.sol";
 
 interface IFrostMovementGovernance {
     function governance() external view returns (address);
@@ -150,7 +151,7 @@ library FrostMovementDispatch {
                     self.frostMovement.drainEnabled
                 );
         } else {
-            revert("FROST unknown selector");
+            return FrostFraudDispatch.dispatch(self, input);
         }
         return bytes("");
     }

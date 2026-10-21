@@ -24,6 +24,13 @@ library FrostBridge {
         require(input.length >= 4, "FROST selector");
         bytes4 selector = bytes4(input[:4]);
         bytes calldata args = input[4:];
+        // The fallback is payable for the C-08 bond only.
+        require(
+            msg.value == 0 ||
+                selector ==
+                IFrostFraudBridge.submitFrostFraudChallenge.selector,
+            "FROST call value"
+        );
         if (selector == IFrostFundingBridge.frostCustodyOutput.selector) {
             return
                 abi.encode(
