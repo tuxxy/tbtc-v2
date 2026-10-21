@@ -90,6 +90,8 @@ library FrostRedemptionRequests {
             );
             intent.state = FrostRedemptionLedger.IntentState.Quarantined;
         }
+        if (FrostWallets.isMovementTarget(wallet))
+            self.frostMovement.eligibleTargets--;
         wallet.quarantined = true;
         custody.stateVersion = nextVersion;
         self.frostRedemptions.quarantines[walletId][

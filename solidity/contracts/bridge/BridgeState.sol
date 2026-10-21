@@ -21,6 +21,7 @@ import "@keep-network/random-beacon/contracts/ReimbursementPool.sol";
 import "../frost/FrostWallets.sol";
 import "../frost/FrostFundingState.sol";
 import "../frost/FrostRedemptionState.sol";
+import "../frost/FrostMovementState.sol";
 import "./IRelay.sol";
 import "./Deposit.sol";
 import "./Redemption.sol";
@@ -339,7 +340,8 @@ library BridgeState {
         FrostCustody.Storage frostCustody;
         FrostFundingState.Storage frostFunding;
         FrostRedemptionState.Storage frostRedemptions;
-        uint256[22] __gap;
+        FrostMovementState.Storage frostMovement;
+        uint256[14] __gap;
     }
 
     event DepositParametersUpdated(
