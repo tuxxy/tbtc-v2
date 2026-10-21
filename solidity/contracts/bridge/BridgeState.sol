@@ -19,6 +19,8 @@ import {IWalletRegistry as EcdsaWalletRegistry} from "@keep-network/ecdsa/contra
 import "@keep-network/random-beacon/contracts/ReimbursementPool.sol";
 
 import "../frost/FrostWallets.sol";
+import "../frost/FrostFundingState.sol";
+import "../frost/FrostCustody.sol";
 import "./IRelay.sol";
 import "./Deposit.sol";
 import "./Redemption.sol";
@@ -334,7 +336,11 @@ library BridgeState {
         // See https://docs.openzeppelin.com/contracts/4.x/upgradeable#storage_gaps
         // slither-disable-next-line unused-state
         FrostWallets.Storage frost;
-        uint256[44] __gap;
+        // C-05 uses two common custody map slots and eight funding slots.
+        // Verifier configuration remains disabled pending C-11 installation.
+        FrostCustody.Storage frostCustody;
+        FrostFundingState.Storage frostFunding;
+        uint256[34] __gap;
     }
 
     event DepositParametersUpdated(
