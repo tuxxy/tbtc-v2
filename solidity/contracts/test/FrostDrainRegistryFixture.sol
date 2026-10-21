@@ -35,7 +35,27 @@ contract FrostDrainRegistryFixture {
     }
 
     function getWalletCreationState() external view returns (uint8) {
-        return creating ? 1 : 0;
+        return creating ? 1 : creationState;
+    }
+
+    /// @dev C-10: a settable legacy DKG state (0 IDLE, 1 AWAITING_SEED,
+    /// 2 AWAITING_RESULT, 3 CHALLENGE) and sortition pool lock. The fixture
+    /// is its own pool, as WalletRegistry.sortitionPool() names one.
+    uint8 public creationState;
+    bool public isLocked;
+
+    function setCreationState(uint8 state) external {
+        require(msg.sender == owner && state <= 3, "Fixture owner");
+        creationState = state;
+    }
+
+    function setPoolLocked(bool locked) external {
+        require(msg.sender == owner, "Fixture owner");
+        isLocked = locked;
+    }
+
+    function sortitionPool() external view returns (address) {
+        return address(this);
     }
 
     function requestNewWallet() external {
