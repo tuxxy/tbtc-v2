@@ -36,6 +36,9 @@ library FrostMovementState {
         uint64 movingFundsRequestedAt;
         uint64 closingStartedAt;
         bool dust;
+        // C-09: readiness time (wallet age) and fraud termination time.
+        uint64 readyAt;
+        uint64 terminatedAt;
     }
 
     /// @dev `source` is a FROST wallet ID, or a legacy wallet label left-aligned.

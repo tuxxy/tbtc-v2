@@ -4,6 +4,7 @@ pragma solidity 0.8.17;
 import "../bridge/BridgeState.sol";
 import "./IFrostFraudBridge.sol";
 import "./FrostFraud.sol";
+import "./FrostLifecycle.sol";
 
 /// @notice Selector dispatch for the C-08 entrypoints, reached from the end of
 /// FrostMovementDispatch.dispatch.
@@ -64,7 +65,7 @@ library FrostFraudDispatch {
             (bytes32 id, uint64 nonce) = abi.decode(args, (bytes32, uint64));
             return abi.encode(FrostFraud.heartbeatDigest(id, nonce));
         } else {
-            revert("FROST unknown selector");
+            return FrostLifecycle.dispatch(self, input);
         }
         return bytes("");
     }
