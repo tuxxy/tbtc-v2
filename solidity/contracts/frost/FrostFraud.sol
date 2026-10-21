@@ -24,14 +24,18 @@ import {BytesLib} from "@keep-network/bitcoin-spv-sol/contracts/BytesLib.sol";
 /// commits to every input, prevout and output, so the digest authorizes that
 /// one transaction only. The transaction must then be authorized: accepted by
 /// a FROST proof, named by an admitted redemption intent (payment,
-/// cancellation alternative or sweep resolution), or matching a recorded
-/// movement commitment exactly. A heartbeat defense uses its own tagged domain.
+/// cancellation alternative or sweep resolution), matching a recorded
+/// movement commitment exactly, or a self-transfer under the sweep fee policy
+/// (every input the wallet's own, the only output paying Q; this covers a
+/// deposit or incoming sweep that never mined). A heartbeat defense uses its
+/// own tagged domain.
 library FrostFraud {
     using BytesLib for bytes;
 
     uint8 internal constant AUTH_PROVEN = 1;
     uint8 internal constant AUTH_INTENT = 2;
     uint8 internal constant AUTH_MOVEMENT = 3;
+    uint8 internal constant AUTH_SELF = 4;
     uint256 internal constant MAX_INPUTS = 128;
     uint256 internal constant MAX_OUTPUTS = 128;
     bytes32 internal constant HEARTBEAT_TAG =
@@ -263,14 +267,7 @@ library FrostFraud {
             for (uint256 j = 0; j < 4; j++)
                 parsed.sequences[i * 4 + j] = inputs[offset + 37 + j];
         }
-        uint256 offset = 1 + uint256(defense.inputIndex) * 41;
-        uint32 index;
-        for (uint256 j = 0; j < 4; j++)
-            index |= uint32(uint8(inputs[offset + 32 + j])) << uint32(8 * j);
-        parsed.challenged = FrostCustody.outpointKey(
-            inputs.slice(offset, 32).toBytes32(),
-            index
-        );
+        parsed.challenged = outpointKeyAt(parsed.outpoints, defense.inputIndex);
         parsed.txHash = sha256(
             abi.encodePacked(
                 sha256(
@@ -426,6 +423,8 @@ library FrostFraud {
             );
         } else if (defense.authorization == AUTH_MOVEMENT) {
             movement(self, defense, parsed);
+        } else if (defense.authorization == AUTH_SELF) {
+            selfTransfer(self, defense, parsed);
         } else {
             revert("FROST defense authorization");
         }
@@ -496,6 +495,104 @@ library FrostFraud {
             total <= mainValue && mainValue - total <= commitment.maxFee,
             "FROST defense movement fee"
         );
+    }
+
+    /// @dev A transfer from the wallet to itself under the sweep fee policy,
+    /// mined or not (D-05 test value, OPEN). Every input is a key-path output
+    /// of Q or a revealed deposit of this wallet, and the only output pays Q.
+    /// The fee cap is the sum of the deposit inputs' maximumSweepFee (fixed at
+    /// reveal) plus the largest sweepFeeCap among the key-path inputs that are
+    /// incoming outputs recorded for this wallet (fixed at their movement
+    /// proof). Any other key-path input, such as the main, adds nothing: a
+    /// deposit sweep's fee is covered by its deposits, the C-05 rule. Both
+    /// parts are fixed when the input was recorded, so no later parameter
+    /// change revokes a defense; the host keeps an incoming sweep within the
+    /// live cap and the recorded caps to stay both provable and defensible.
+    /// SIGHASH_DEFAULT commits to every prevout amount and script, so
+    /// the supplied prevouts are the ones the wallet signed: a digest rebuilt
+    /// over other prevouts would not equal the challenged one.
+    function selfTransfer(
+        BridgeState.Storage storage self,
+        Defense calldata defense,
+        Parsed memory parsed
+    ) private view {
+        bytes32 q = self
+            .frost
+            .wallets[bytes20(defense.walletId)]
+            .descriptor
+            .outputKey;
+        bytes32 keyPathScript = keccak256(abi.encodePacked(hex"5120", q));
+        uint256 total;
+        uint256 cap;
+        uint256 incomingCap;
+        for (uint256 i = 0; i < parsed.inputs; i++) {
+            Prevout calldata prevout = defense.prevouts[i];
+            // Each value is at most MAX_SATOSHI (checked in common).
+            total += prevout.value;
+            bytes32 script = keccak256(prevout.script);
+            bytes32 key = outpointKeyAt(parsed.outpoints, i);
+            if (script == keyPathScript) {
+                FrostMovementState.Incoming storage incoming = self
+                    .frostMovement
+                    .incoming[key];
+                if (
+                    incoming.target == defense.walletId &&
+                    incoming.state !=
+                    FrostMovementState.IncomingState.Unknown &&
+                    incoming.sweepFeeCap > incomingCap
+                ) incomingCap = incoming.sweepFeeCap;
+                continue;
+            }
+            FrostFundingState.Deposit storage deposit = self
+                .frostFunding
+                .deposits[key];
+            require(
+                deposit.revealedAt != 0 &&
+                    deposit.terms.fullWalletId == defense.walletId &&
+                    script ==
+                    keccak256(
+                        abi.encodePacked(hex"5120", deposit.depositOutputKey)
+                    ),
+                "FROST defense self input"
+            );
+            cap += deposit.maximumSweepFee;
+        }
+        cap += incomingCap;
+        // 0x01 ‖ value (8 bytes LE) ‖ 0x22 ‖ OP_1 PUSH32 Q.
+        bytes memory outputs = defense.transaction.outputVector;
+        require(
+            outputs.length == 44 &&
+                outputs[0] == 0x01 &&
+                outputs[9] == 0x22 &&
+                outputs[10] == 0x51 &&
+                outputs[11] == 0x20 &&
+                outputs.slice(12, 32).toBytes32() == q,
+            "FROST defense self output"
+        );
+        uint256 value;
+        for (uint256 j = 0; j < 8; j++)
+            value |= uint256(uint8(outputs[1 + j])) << (8 * j);
+        require(
+            value <= total && total - value <= cap,
+            "FROST defense self fee"
+        );
+    }
+
+    /// @dev The shared outpoint key of input `i` from the 36-byte outpoints.
+    function outpointKeyAt(bytes memory outpoints, uint256 i)
+        private
+        pure
+        returns (bytes32)
+    {
+        uint256 offset = i * 36;
+        uint32 index;
+        for (uint256 j = 0; j < 4; j++)
+            index |= uint32(uint8(outpoints[offset + 32 + j])) << uint32(8 * j);
+        return
+            FrostCustody.outpointKey(
+                outpoints.slice(offset, 32).toBytes32(),
+                index
+            );
     }
 
     function littleEndian64(uint64 value) private pure returns (bytes8 out) {

@@ -20,6 +20,7 @@ import {
   World,
   Wallet,
   Tx,
+  TYPE,
 } from "../helpers/frost-movement-world"
 
 const BOND = ethers.utils.parseEther("5")
@@ -79,6 +80,101 @@ describe("C-09 FROST lifecycle routing and closure", () => {
       inclusion(tx.hash)
     )
     return { tx, values }
+  }
+
+  // Seat i of every world wallet is operated by seats()[i - 1]; threshold 2.
+  const seats = () => [w.operator, w.owner, w.depositor]
+  const claimDigest = (
+    x: Wallet,
+    nonce: number,
+    inactive: number[],
+    heartbeatFailed: boolean
+  ) =>
+    w.frost.frostInactivityClaimDigest(x.id, nonce, inactive, heartbeatFailed)
+  /// Each signing seat signs with its own operator unless `signers` says
+  /// otherwise; signatures are 65-byte r ‖ s ‖ v, concatenated.
+  const claim = async (
+    x: Wallet,
+    nonce: number,
+    inactive: number[],
+    heartbeatFailed: boolean,
+    signing: number[],
+    signers?: { signMessage(m: Uint8Array): Promise<string> }[]
+  ) => {
+    const digest = ethers.utils.arrayify(
+      await claimDigest(x, nonce, inactive, heartbeatFailed)
+    )
+    const signatures: string[] = []
+    for (let i = 0; i < signing.length; i++)
+      signatures.push(
+        await (signers?.[i] ?? seats()[signing[i] - 1]).signMessage(digest)
+      )
+    return w.frost.notifyFrostOperatorInactivity(
+      x.id,
+      nonce,
+      inactive,
+      heartbeatFailed,
+      signing,
+      ethers.utils.hexConcat(signatures)
+    )
+  }
+  /// Register a wallet with its own roster through the registry fixture;
+  /// it is made ready unless `ready` is false.
+  const register = async (
+    secret: number,
+    operators: string[],
+    threshold: number,
+    ready = true
+  ): Promise<Wallet> => {
+    const pub = ethers.utils.computePublicKey(
+      ethers.utils.hexZeroPad(ethers.utils.hexlify(secret), 32),
+      true
+    )
+    const q = `0x${pub.slice(4)}`
+    const { chainId } = await ethers.provider.getNetwork()
+    const descriptor = {
+      scheme: 2,
+      profile: 1,
+      chainId,
+      registry: w.registry.address,
+      epoch: await ethers.provider.getBlockNumber(),
+      members: operators.map((_, i) => i + 1),
+      operators,
+      threshold,
+      snowfallDescriptor: ethers.utils.id(`K08 wallet ${secret}`),
+      outputKey: q,
+    }
+    const descriptorHash = ethers.utils.keccak256(
+      ethers.utils.defaultAbiCoder.encode(
+        ["bytes32", TYPE],
+        [ethers.utils.id("tbtc-v2/frost-descriptor/v1"), descriptor]
+      )
+    )
+    const id = ethers.utils.keccak256(
+      ethers.utils.concat([ethers.utils.id("tbtc-v2/frost-wallet-id/v1"), q])
+    )
+    await w.registry.created(
+      ethers.utils.defaultAbiCoder.encode([TYPE], [descriptor]),
+      (await ethers.provider.getBlockNumber()) + 100000
+    )
+    if (ready) await w.registry.ready(id, descriptorHash)
+    return {
+      q,
+      id,
+      label: id.slice(0, 42),
+      descriptor,
+      descriptorHash,
+      value: 0,
+    }
+  }
+  const inactivityEvent = async (tx: any) => {
+    const receipt = await tx.wait()
+    const logs = receipt.logs
+      .filter((l: any) => l.address === w.frost.address)
+      .map((l: any) => w.frost.interface.parseLog(l))
+      .filter((e: any) => e.name === "FrostOperatorInactivityNotified")
+    expect(logs.length).to.equal(1)
+    return logs[0].args
   }
 
   before(async () => {
@@ -418,5 +514,245 @@ describe("C-09 FROST lifecycle routing and closure", () => {
         targets[0].descriptorHash,
         reason("moved-funds-sweep-timeout")
       )
+  })
+  it("moves a Live wallet on a heartbeat-failure inactivity claim and names the seat and operator", async () => {
+    const [x] = w.wallets
+    await w.fund(x, 600000)
+    expect(await w.state(x)).to.equal(State.Live)
+    expect(await w.frost.frostInactivityNonce(x.id)).to.equal(0)
+    const { chainId } = await ethers.provider.getNetwork()
+    expect(await claimDigest(x, 0, [3], true)).to.equal(
+      ethers.utils.keccak256(
+        ethers.utils.defaultAbiCoder.encode(
+          [
+            "bytes32",
+            "uint256",
+            "address",
+            "bytes32",
+            "bytes32",
+            "uint64",
+            "uint16[]",
+            "bool",
+          ],
+          [
+            ethers.utils.id("tbtc-v2/frost-inactivity/v1"),
+            chainId,
+            w.proxy.address,
+            x.id,
+            x.descriptorHash,
+            0,
+            [3],
+            true,
+          ]
+        )
+      )
+    )
+    const eligibleBefore = await eligible()
+    const tx = await claim(x, 0, [3], true, [1, 2])
+    await expect(tx)
+      .to.emit(w.frost, "FrostSanctionNotified")
+      .withArgs(x.id, x.descriptorHash, reason("inactivity"))
+    await expect(tx)
+      .to.emit(w.frost, "FrostWalletMovingFunds")
+      .withArgs(x.id, reason("heartbeat-failure"))
+    const event = await inactivityEvent(tx)
+    expect(event.walletId).to.equal(x.id)
+    expect(event.nonce).to.equal(0)
+    expect(event.inactiveSeats).to.deep.equal([3])
+    expect(event.inactiveOperators).to.deep.equal([w.depositor.address])
+    expect(event.heartbeatFailed).to.equal(true)
+    expect(await w.state(x)).to.equal(State.MovingFunds)
+    expect(await eligible()).to.equal(eligibleBefore - 1)
+    expect(await w.frost.frostInactivityNonce(x.id)).to.equal(1)
+    expect((await w.frost.frostWalletLifecycle(x.id)).inactivityNonce).to.equal(
+      1
+    )
+  })
+
+  it("increments the inactivity nonce and refuses a replayed, stale or future claim", async () => {
+    const [x] = w.wallets
+    await claim(x, 0, [3], false, [1, 2])
+    expect(await w.frost.frostInactivityNonce(x.id)).to.equal(1)
+    // The same claim again (duplicate): its nonce is spent.
+    await expect(claim(x, 0, [3], false, [1, 2])).to.be.revertedWith(
+      "FROST inactivity nonce"
+    )
+    await expect(claim(x, 2, [3], false, [1, 2])).to.be.revertedWith(
+      "FROST inactivity nonce"
+    )
+    await claim(x, 1, [3], false, [1, 2])
+    expect(await w.frost.frostInactivityNonce(x.id)).to.equal(2)
+    // Nonces are per wallet.
+    expect(await w.frost.frostInactivityNonce(w.wallets[1].id)).to.equal(0)
+  })
+
+  it("refuses a claimed signer, too few signers, a wrong operator and malformed seat lists", async () => {
+    const [x] = w.wallets
+    // A signer in the claimed set.
+    await expect(claim(x, 0, [2], false, [1, 2])).to.be.revertedWith(
+      "FROST inactivity signers"
+    )
+    // Fewer than threshold (2) signers.
+    await expect(claim(x, 0, [3], false, [1])).to.be.revertedWith(
+      "FROST inactivity signers"
+    )
+    // Seat 2 signed by seat 3's operator (member mismatch).
+    await expect(
+      claim(x, 0, [3], false, [1, 2], [w.operator, w.depositor])
+    ).to.be.revertedWith("FROST inactivity signature")
+    // A signature over another claim.
+    const other = ethers.utils.arrayify(await claimDigest(x, 0, [2], false))
+    await expect(
+      w.frost.notifyFrostOperatorInactivity(
+        x.id,
+        0,
+        [3],
+        false,
+        [1, 2],
+        ethers.utils.hexConcat([
+          await w.operator.signMessage(other),
+          await w.owner.signMessage(other),
+        ])
+      )
+    ).to.be.revertedWith("FROST inactivity signature")
+    // Signature bytes not 65 per signer.
+    const digest = ethers.utils.arrayify(await claimDigest(x, 0, [3], false))
+    await expect(
+      w.frost.notifyFrostOperatorInactivity(
+        x.id,
+        0,
+        [3],
+        false,
+        [1, 2],
+        await w.operator.signMessage(digest)
+      )
+    ).to.be.revertedWith("FROST inactivity signers")
+    // Non-ascending signing seats.
+    await expect(claim(x, 0, [3], false, [2, 1])).to.be.revertedWith(
+      "FROST inactivity signers"
+    )
+    // Non-ascending, repeated, empty and out-of-range claimed seats.
+    await expect(claim(x, 0, [2, 1], false, [3])).to.be.revertedWith(
+      "FROST inactivity seats"
+    )
+    await expect(claim(x, 0, [3, 3], false, [1, 2])).to.be.revertedWith(
+      "FROST inactivity seats"
+    )
+    await expect(claim(x, 0, [], false, [1, 2])).to.be.revertedWith(
+      "FROST inactivity seats"
+    )
+    await expect(claim(x, 0, [4], false, [1, 2])).to.be.revertedWith(
+      "FROST inactivity seats"
+    )
+    await expect(claim(x, 0, [0], false, [1, 2])).to.be.revertedWith(
+      "FROST inactivity seats"
+    )
+    // A signing seat out of range.
+    await expect(
+      claim(x, 0, [1], false, [2, 4], [w.owner, w.depositor])
+    ).to.be.revertedWith("FROST inactivity signers")
+    expect(await w.frost.frostInactivityNonce(x.id)).to.equal(0)
+  })
+
+  it("refuses claims against a Closed, unknown or not yet ready wallet", async () => {
+    const [x] = w.wallets
+    await advance(maxAge)
+    await w.frost.notifyFrostWalletCloseable(x.id)
+    await advance(closingPeriod + 1)
+    await w.frost.finalizeFrostWalletClosing(x.id)
+    expect(await w.state(x)).to.equal(State.Closed)
+    await expect(claim(x, 0, [3], true, [1, 2])).to.be.revertedWith(
+      "FROST inactivity wallet"
+    )
+    const unknown = { ...x, id: ethers.utils.id("C09 unknown wallet") }
+    await expect(claim(unknown, 0, [3], true, [1, 2])).to.be.revertedWith(
+      "FROST inactivity wallet"
+    )
+    const pending = await register(
+      3000,
+      seats().map((s) => s.address),
+      2,
+      false
+    )
+    expect(await w.state(pending)).to.equal(State.RegisteredPendingReady)
+    await expect(claim(pending, 0, [3], true, [1, 2])).to.be.revertedWith(
+      "FROST inactivity wallet"
+    )
+  })
+
+  it("only records a claim without heartbeat failure, or on a wallet that is not Live", async () => {
+    const [x, y, z] = w.wallets
+    await w.fund(x, 600000)
+    const tx = await claim(x, 0, [3], false, [1, 2])
+    await expect(tx)
+      .to.emit(w.frost, "FrostSanctionNotified")
+      .withArgs(x.id, x.descriptorHash, reason("inactivity"))
+    await expect(tx).not.to.emit(w.frost, "FrostWalletMovingFunds")
+    expect((await inactivityEvent(tx)).heartbeatFailed).to.equal(false)
+    expect(await w.state(x)).to.equal(State.Live)
+
+    // ReadyUnfunded: recorded only.
+    expect(await w.state(z)).to.equal(State.ReadyUnfunded)
+    await expect(claim(z, 0, [1], true, [2, 3])).not.to.emit(
+      w.frost,
+      "FrostWalletMovingFunds"
+    )
+    expect(await w.state(z)).to.equal(State.ReadyUnfunded)
+
+    // MovingFunds: recorded only; the movement request time is unchanged.
+    await w.fund(y, 600000)
+    await w.frost.notifyFrostWalletCloseable(y.id)
+    expect(await w.state(y)).to.equal(State.MovingFunds)
+    const requested = (await w.frost.frostWalletLifecycle(y.id))
+      .movingFundsRequestedAt
+    await advance(60)
+    const moving = await claim(y, 0, [3], true, [1, 2])
+    await expect(moving).not.to.emit(w.frost, "FrostWalletMovingFunds")
+    await expect(moving)
+      .to.emit(w.frost, "FrostSanctionNotified")
+      .withArgs(y.id, y.descriptorHash, reason("inactivity"))
+    expect(await w.state(y)).to.equal(State.MovingFunds)
+    expect(
+      (await w.frost.frostWalletLifecycle(y.id)).movingFundsRequestedAt
+    ).to.equal(requested)
+    expect(await w.frost.frostInactivityNonce(y.id)).to.equal(1)
+  })
+
+  it("measures a 100-seat claim with 51 signatures under the 2^24 gas cap", async function measure() {
+    this.timeout(180000)
+    const n = 100
+    const threshold = 51
+    const operators = Array.from(
+      { length: n },
+      (_, i) => new ethers.Wallet(ethers.utils.id(`K08 operator ${i + 1}`))
+    )
+    const big = await register(
+      2000,
+      operators.map((o) => o.address),
+      threshold
+    )
+    await w.fund(big, 600000)
+    expect(await w.state(big)).to.equal(State.Live)
+    // Seats 1..51 sign; seats 52..100 are claimed.
+    const signing = Array.from({ length: threshold }, (_, i) => i + 1)
+    const inactive = Array.from({ length: n - threshold }, (_, i) => i + 52)
+    const tx = await claim(
+      big,
+      0,
+      inactive,
+      true,
+      signing,
+      signing.map((s) => operators[s - 1])
+    )
+    const receipt = await tx.wait()
+    // eslint-disable-next-line no-console
+    console.log(
+      `      100-seat inactivity claim (51 signatures, 49 claimed) gas: ${receipt.gasUsed.toString()}`
+    )
+    expect(receipt.gasUsed.toNumber()).to.be.lessThan(16777216)
+    expect((await inactivityEvent(tx)).inactiveOperators).to.deep.equal(
+      inactive.map((s) => operators[s - 1].address)
+    )
+    expect(await w.state(big)).to.equal(State.MovingFunds)
   })
 })
