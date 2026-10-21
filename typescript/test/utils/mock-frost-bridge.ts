@@ -6,6 +6,8 @@ import {
   EthereumAddress,
   FrostBridge,
   FrostCancellationAlternative,
+  FrostDepositConstruction,
+  FrostDepositTerms,
   FrostRedemptionRequest,
   FrostRedemptionRequestState,
   FrostReservation,
@@ -24,6 +26,10 @@ export class MockFrostBridge implements FrostBridge {
   alternatives = new Map<string, FrostCancellationAlternative[]>()
   calls: { name: string; args: unknown[] }[] = []
   failClaim = new Set<string>()
+  // C-05 deposit reads: a construction function standing in for the contract,
+  // and the historical refund constructions by deposit key.
+  construct?: (terms: FrostDepositTerms) => FrostDepositConstruction
+  refundConstructions = new Map<string, FrostDepositConstruction>()
 
   private record(name: string, ...args: unknown[]): Hex {
     this.calls.push({ name, args })
@@ -80,6 +86,15 @@ export class MockFrostBridge implements FrostBridge {
   async claimCancellationBudget(reservationId: Hex, hash: BitcoinTxHash) {
     if (this.failClaim.has(hash.toString())) throw new Error("winner")
     return this.record("claimCancellationBudget", reservationId, hash)
+  }
+  async depositConstruction(terms: FrostDepositTerms) {
+    if (!this.construct) throw new Error("FROST addresses disabled")
+    return this.construct(terms)
+  }
+  async depositRefundConstruction(depositKey: Hex) {
+    const c = this.refundConstructions.get(depositKey.toString())
+    if (!c) throw new Error("FROST deposit unknown")
+    return c
   }
 }
 

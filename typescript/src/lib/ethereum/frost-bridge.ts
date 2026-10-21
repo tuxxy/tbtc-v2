@@ -9,6 +9,8 @@ import { BitcoinRawTxVectors, BitcoinSpvProof, BitcoinTxHash } from "../bitcoin"
 import {
   FrostBridge,
   FrostCancellationAlternative,
+  FrostDepositConstruction,
+  FrostDepositTerms,
   FrostRedemptionRequest,
   FrostRedemptionRequestState,
   FrostReservation,
@@ -46,6 +48,37 @@ function txParam(tx: BitcoinRawTxVectors) {
     inputVector: tx.inputs.toPrefixedString(),
     outputVector: tx.outputs.toPrefixedString(),
     locktime: tx.locktime.toPrefixedString(),
+  }
+}
+
+function termsParam(t: FrostDepositTerms) {
+  return {
+    chainId: t.chainId,
+    bridge: t.bridge.toPrefixedString(),
+    bitcoinGenesis: t.bitcoinGenesis.toPrefixedString(),
+    fullWalletId: t.fullWalletId.toPrefixedString(),
+    descriptorHash: t.descriptorHash.toPrefixedString(),
+    depositor: t.depositor.toPrefixedString(),
+    vault: t.vault.toPrefixedString(),
+    blinding: t.blinding.toPrefixedString(),
+    amount: t.amount,
+    refundKey: t.refundKey.toPrefixedString(),
+    refundLocktime: t.refundLocktime,
+    extraData: t.extraData.toPrefixedString(),
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function construction(c: any): FrostDepositConstruction {
+  return {
+    outputKey: Hex.from(c.output.key),
+    root: Hex.from(c.output.root),
+    parity: Number(c.output.parity),
+    receipt: Hex.from(c.receipt),
+    walletLeaf: Hex.from(c.walletLeaf),
+    refundLeaf: Hex.from(c.refundLeaf),
+    walletControl: Hex.from(c.walletControl),
+    refundControl: Hex.from(c.refundControl),
   }
 }
 
@@ -254,6 +287,24 @@ export class EthereumFrostBridge implements FrostBridge {
       this._instance.claimFrostCancellationBudget(
         reservationId.toPrefixedString(),
         internal(transactionHash)
+      )
+    )
+  }
+
+  async depositConstruction(
+    terms: FrostDepositTerms
+  ): Promise<FrostDepositConstruction> {
+    return construction(
+      await this._instance.frostDepositConstruction(termsParam(terms))
+    )
+  }
+
+  async depositRefundConstruction(
+    depositKey: Hex
+  ): Promise<FrostDepositConstruction> {
+    return construction(
+      await this._instance.frostDepositRefundConstruction(
+        depositKey.toPrefixedString()
       )
     )
   }
