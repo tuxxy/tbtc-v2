@@ -2,12 +2,20 @@
 pragma solidity 0.8.17;
 
 import "../frost/FrostDepositAdmission.sol";
+import "../frost/FrostExposureController.sol";
 
 /// @dev Component-only seeded wallet/configuration. This bypasses registration,
 /// readiness and governance; it is not evidence of a funded wallet lifecycle.
 contract FrostDepositAdmissionFixture {
     BridgeState.Storage private bridge;
     FrostFundingState.Storage private funding;
+
+    constructor() {
+        // C-10: reveals stop under containment, so they read a controller.
+        bridge.frostExposure.controller = address(
+            new FrostExposureController(address(this), address(this))
+        );
+    }
 
     function seedConfiguration(address verifier, bytes32 genesis) external {
         funding.configuration = FrostFundingState.Configuration(

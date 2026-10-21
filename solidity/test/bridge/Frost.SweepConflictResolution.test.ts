@@ -521,6 +521,17 @@ describe("C-04 approved sweep conflict resolution (synthetic inclusion component
       ethers.utils.id("UNQUALIFIED A3 synthetic-proof component"),
       genesis
     )
+    // C-10: the exposure controller with test ceilings (D-10 values OPEN).
+    const exposure = await deploy("FrostExposureController", [
+      proxy.address,
+      (await ethers.getSigners())[0].address,
+    ])
+    await exposure.openBudgetPeriod(
+      ethers.BigNumber.from(2).pow(64).sub(1),
+      ethers.BigNumber.from(2).pow(64).sub(1),
+      ethers.utils.id("C-10 test budget; D-10 OPEN")
+    )
+    await frost.installFrostExposureController(exposure.address)
     await frost.setFrostFundingGates(true, true)
     await frost.configureFrostRedemptions(
       genesis,
@@ -593,6 +604,66 @@ describe("C-04 approved sweep conflict resolution (synthetic inclusion component
     snapshot = await network.provider.send("evm_snapshot")
     // Restore the JS inventory as well as EVM state after vault-specific reveals.
     deposits = deposits.slice(0, 4)
+  })
+
+  // C-10 (adversarial review of #14): withdrawals stay reachable under
+  // containment and change no exposure counter. Containment stops only new
+  // exposure (reveals, reservations, unreserved credit).
+  async function containedFrame() {
+    const exposure = await ethers.getContractAt(
+      "FrostExposureController",
+      await frost.frostExposureController()
+    )
+    await exposure.contain(ethers.utils.id("C-10 exits under containment"))
+    const read = async () =>
+      JSON.stringify(
+        await Promise.all(
+          [
+            "custodyReserved",
+            "custodyReleased",
+            "custodyAdmitted",
+            "issuanceReserved",
+            "issued",
+            "depositsOutstanding",
+            "remainingCustody",
+            "remainingIssuance",
+          ].map(async (name) => (await exposure[name]()).toString())
+        )
+      )
+    return { exposure, read, before: await read() }
+  }
+
+  it("C-10: requests, reserves and pays a FROST redemption under containment, counters unchanged", async () => {
+    const { exposure, read, before } = await containedFrame()
+    expect(await exposure.contained()).eq(true)
+    await expect(reveal()).revertedWith("FROST exposure contained")
+    const id = await request()
+    const r = await reserve([id], [utxo(main, 79200)])
+    await frost.submitFrostRedemptionProof(
+      r.id,
+      r.p.transaction,
+      inclusion(hashOf(r.p.transaction))
+    )
+    expect((await frost.frostReservation(r.id)).state).not.eq(1)
+    expect(await read()).eq(before)
+  })
+
+  it("C-10: cancels a reserved FROST redemption and times out another under containment, counters unchanged", async () => {
+    const ids = [await request(), await request()]
+    const r = await reserve(ids, [utxo(main, 79200), utxo(other, 99000)])
+    const c = await cancellation(r.id)
+    const { read, before } = await containedFrame()
+    await frost.submitFrostCancellationProof(r.id, c.t.tx, inclusion(c.t.hash))
+    expect((await frost.frostReservation(r.id)).state).eq(3)
+    for (const id of ids)
+      expect((await frost.frostRedemptionRequest(id)).state).eq(5)
+    const late = await request()
+    const deadline = (await frost.frostRedemptionRequest(late)).deadline
+    await network.provider.send("evm_setNextBlockTimestamp", [
+      deadline.toNumber() + 1,
+    ])
+    await frost.notifyFrostRedemptionTimeout(late)
+    expect(await read()).eq(before)
   })
 
   const orderingCases = [true, false]

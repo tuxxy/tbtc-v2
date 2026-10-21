@@ -176,6 +176,18 @@ describe("FROST funding public configuration and deployment", () => {
     await expect(
       f.frost.configureFrostFunding(f.verifier.address, f.hash, record, genesis)
     ).revertedWith("FROST funding already installed")
+    // C-10: no gate opens before the exposure controller is installed.
+    await expect(f.frost.setFrostFundingGates(true, false)).revertedWith(
+      "FROST exposure not installed"
+    )
+    await expect(f.frost.setFrostFundingGates(false, true)).revertedWith(
+      "FROST exposure not installed"
+    )
+    const exposure = await deploy("FrostExposureController", [
+      f.frost.address,
+      f.governance.address,
+    ])
+    await f.frost.installFrostExposureController(exposure.address)
     await expect(
       f.frost.connect(f.other).setFrostFundingGates(true, false)
     ).revertedWith("Caller is not governance")

@@ -5,6 +5,7 @@ import "../bridge/BridgeState.sol";
 import "./IFrostMovementBridge.sol";
 import "./FrostMovement.sol";
 import "./FrostFraudDispatch.sol";
+import "./FrostExposureState.sol";
 
 interface IFrostMovementGovernance {
     function governance() external view returns (address);
@@ -115,6 +116,11 @@ library FrostMovementDispatch {
                 "Caller is not governance"
             );
             bool enabled = abi.decode(args, (bool));
+            // C-10: drains reserve custody, so they need the controller.
+            require(
+                !enabled || self.frostExposure.controller != address(0),
+                "FROST exposure not installed"
+            );
             self.frostMovement.drainEnabled = enabled;
             emit FrostDrainEnabled(enabled);
         } else if (

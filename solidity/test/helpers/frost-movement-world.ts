@@ -10,6 +10,7 @@ import { expect } from "chai"
 import { createHash } from "crypto"
 
 export const ZERO = ethers.constants.HashZero
+export const MAX_UINT64 = ethers.BigNumber.from(2).pow(64).sub(1)
 export const State = {
   Unknown: 0,
   Candidate: 1,
@@ -222,6 +223,17 @@ export async function movementWorld(count = 4) {
     ethers.utils.id("UNQUALIFIED C06 local test"),
     genesis
   )
+  // C-10: the exposure controller with test ceilings (D-10 values OPEN).
+  const exposure = await deploy("FrostExposureController", [
+    proxy.address,
+    owner.address,
+  ])
+  await exposure.openBudgetPeriod(
+    MAX_UINT64,
+    MAX_UINT64,
+    ethers.utils.id("C-10 test budget; D-10 OPEN")
+  )
+  await frost.installFrostExposureController(exposure.address)
   await frost.setFrostFundingGates(true, true)
   const { chainId } = await ethers.provider.getNetwork()
 
@@ -373,7 +385,12 @@ export async function movementWorld(count = 4) {
   }
 
   let revealed = 0
-  const terms = async (w: Wallet, amount: number, lockAhead = 86400) => {
+  const terms = async (
+    w: Wallet,
+    amount: number,
+    lockAhead = 86400,
+    vault = ethers.constants.AddressZero
+  ) => {
     revealed += 1
     return {
       chainId,
@@ -382,7 +399,7 @@ export async function movementWorld(count = 4) {
       fullWalletId: w.id,
       descriptorHash: w.descriptorHash,
       depositor: depositor.address,
-      vault: ethers.constants.AddressZero,
+      vault,
       blinding: ethers.utils.hexZeroPad(ethers.utils.hexlify(revealed), 8),
       amount,
       refundKey: w.q,
@@ -391,8 +408,13 @@ export async function movementWorld(count = 4) {
     }
   }
   /// Reveal one deposit and return its funding transaction.
-  const reveal = async (w: Wallet, amount: number, lockAhead = 86400) => {
-    const t = await terms(w, amount, lockAhead)
+  const reveal = async (
+    w: Wallet,
+    amount: number,
+    lockAhead = 86400,
+    vault = ethers.constants.AddressZero
+  ) => {
+    const t = await terms(w, amount, lockAhead, vault)
     const output = await frost.frostDepositOutput(t)
     const funding = transaction(
       [[ethers.utils.id(`C06 funding ${revealed}`), 0]],
@@ -450,6 +472,7 @@ export async function movementWorld(count = 4) {
     pool,
     registry,
     legacyRegistry,
+    exposure,
     wallets,
     layout,
     self,

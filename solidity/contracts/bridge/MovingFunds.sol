@@ -222,6 +222,12 @@ library MovingFunds {
             !drain || self.frostMovement.drainEnabled,
             "FROST drain disabled"
         );
+        // C-10: a below-dust source closes without moving its main, which
+        // would strand a drain's reservation and its targets' obligations.
+        require(
+            !drain || walletBtcBalance >= self.movingFundsDustThreshold,
+            "FROST drain below dust"
+        );
 
         uint256 expectedTargetWalletsCount = Math.min(
             drain ? self.frostMovement.eligibleTargets : self.liveWalletsCount,
@@ -245,6 +251,14 @@ library MovingFunds {
             targetWallets,
             drain
         );
+        // C-10: a drain reserves its custody into FROST before it is signed.
+        if (drain)
+            FrostMovement.reportDrain(
+                self,
+                walletPubKeyHash,
+                walletBtcBalance,
+                true
+            );
 
         emit MovingFundsCommitmentSubmitted(
             walletPubKeyHash,
@@ -576,8 +590,16 @@ library MovingFunds {
         uint256 frostOutputs = 0;
         for (uint256 i = 0; i < outputsCount; i++)
             if (descriptorHashes[i] != bytes32(0)) frostOutputs++;
+        // A drain-committed source is proven only as a drain: legacy-shaped
+        // outputs to the FROST labels would match the commitment hash.
         require(
-            frostOutputs == 0 || frostOutputs == outputsCount,
+            frostOutputs ==
+                (
+                    self.frostMovement.drainTargets[processInfo.sourceWallet]
+                        .length > 0
+                        ? outputsCount
+                        : 0
+                ),
             "FROST drain mixes schemes"
         );
         if (frostOutputs > 0) {
@@ -585,6 +607,13 @@ library MovingFunds {
             delete self.frostMovement.drainDescriptorHashes[
                 processInfo.sourceWallet
             ];
+            // C-10: complete the drain with the value that reached FROST.
+            FrostMovement.reportDrain(
+                self,
+                processInfo.sourceWallet,
+                outputsTotalValue,
+                false
+            );
         }
         targetWalletsHash = keccak256(abi.encodePacked(targetWallets));
 
@@ -850,6 +879,8 @@ library MovingFunds {
             "Transaction fee is too high"
         );
 
+        // C-10: release a FROST drain committed against the replaced main.
+        FrostMovement.releaseDrainForMainChange(self, walletPubKeyHash);
         // Use the sweep transaction output as the new sweeping wallet's main UTXO.
         // Transaction output index is always 0 as sweep transaction always
         // contains only one output.
