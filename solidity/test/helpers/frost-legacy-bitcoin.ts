@@ -28,7 +28,9 @@ import {
 } from "./frost-test-isolation"
 import { compact, unsigned } from "../data/frost/deposit-profile"
 
-const CORE = "/private/tmp/k04-tools/bitcoin-29.0/bin"
+const CORE = process.env.FROST_K04_BITCOIND
+  ? path.dirname(process.env.FROST_K04_BITCOIND)
+  : "/private/tmp/k04-tools/bitcoin-29.0/bin"
 const CORE_SHA =
   "f4b9d78a74643c726d022840ca506dc317d41f8825aaef80b7bb705e12c5fda8"
 const sha = (b: Buffer) => createHash("sha256").update(b).digest()
@@ -625,7 +627,14 @@ type PublicLegacyOrigin = {
 // local compiled inputs are pinned; current artifacts supply fixture/watchtower/
 // proxy wrappers only. No Bank or Bridge storage seeding is exposed.
 export async function publicLegacyOriginFixture(
-  evidenceDirectory: string
+  evidenceDirectory: string,
+  beforeSweep?: (state: {
+    bridge: Contract
+    bank: Contract
+    admin: Contract
+    witness: LegacyWitness
+    deployCurrent: () => Promise<Contract>
+  }) => Promise<void>
 ): Promise<PublicLegacyOrigin> {
   prepareEvidenceDirectory(evidenceDirectory)
   const { artifacts, ethers } = await import("hardhat")
@@ -777,9 +786,57 @@ export async function publicLegacyOriginFixture(
     })
     return contract
   }
+  const deployCurrent = async () => {
+    const current = await artifacts.getBuildInfo(
+      "contracts/bridge/Bridge.sol:Bridge"
+    )
+    assert(current)
+    const hashes = Object.entries(current.input.sources)
+      // Generated, gitignored re-exports of dependencies are not repository
+      // sources; a full compile can place them in Bridge's build-info.
+      .filter(
+        ([name]) =>
+          name.startsWith("contracts/") &&
+          !name.startsWith("contracts/test/") &&
+          !name.startsWith("contracts/hardhat-dependency-compiler/")
+      )
+      .map(([name, source]) => {
+        const pinned = execFileSync(
+          "git",
+          [
+            "show",
+            `${currentRevision}:solidity/${name}`,
+          ],
+          { cwd: repository, timeout: 10000 }
+        ).toString()
+        assert.equal(source.content, pinned, `frozen runtime source: ${name}`)
+        return {
+          path: name,
+          sha256: sha(Buffer.from(pinned)).toString("hex"),
+        }
+      })
+    const upgraded = await deploy("contracts/bridge/Bridge.sol:Bridge")
+    fs.writeFileSync(
+      path.join(evidenceDirectory, "current-source-binding.json"),
+      JSON.stringify(
+        {
+          revision: currentRevision,
+          sourceHashes: hashes,
+          runtimeSizes,
+        },
+        null,
+        2
+      )
+    )
+    return upgraded
+  }
   const bank = await deploy("contracts/bank/Bank.sol:Bank", [], true)
   const registry = await deploy("FrostLegacyOriginRegistryFixture")
   const relay = await deploy("FrostLegacyOriginRegtestRelay")
+  const pool = await deploy(
+    "@keep-network/random-beacon/contracts/ReimbursementPool.sol:ReimbursementPool",
+    [0, 0]
+  )
   const implementation = await deploy(
     "contracts/bridge/Bridge.sol:Bridge",
     [],
@@ -793,7 +850,7 @@ export async function publicLegacyOriginFixture(
       relay.address,
       treasury.address,
       registry.address,
-      governance.address,
+      pool.address,
       1,
     ]
   )
@@ -804,6 +861,7 @@ export async function publicLegacyOriginFixture(
   ])
   const bridge = implementation.attach(proxy.address)
   await registry.bindWalletOwner(bridge.address)
+  await pool.authorize(bridge.address)
   await bank.updateBridge(bridge.address)
   await bridge.setSpvMaintainerStatus(maintainer.address, true)
   // All local numerical settings precede obligations. Preserve the baseline
@@ -875,6 +933,7 @@ export async function publicLegacyOriginFixture(
     "0",
     "reveal cannot create Bank credit"
   )
+  await beforeSweep?.({ bridge, bank, admin, witness, deployCurrent })
   await bridge
     .connect(maintainer)
     .submitDepositSweepProof(
@@ -980,50 +1039,7 @@ export async function publicLegacyOriginFixture(
     baselineBuild,
     baselineSourceHashes,
     currentRevision,
-    deployCurrent: async () => {
-      const current = await artifacts.getBuildInfo(
-        "contracts/bridge/Bridge.sol:Bridge"
-      )
-      assert(current)
-      const hashes = Object.entries(current.input.sources)
-        // Generated, gitignored re-exports of dependencies are not repository
-        // sources; a full compile can place them in Bridge's build-info.
-        .filter(
-          ([name]) =>
-            name.startsWith("contracts/") &&
-            !name.startsWith("contracts/test/") &&
-            !name.startsWith("contracts/hardhat-dependency-compiler/")
-        )
-        .map(([name, source]) => {
-          const pinned = execFileSync(
-            "git",
-            [
-              "show",
-              `${currentRevision}:solidity/${name}`,
-            ],
-            { cwd: repository, timeout: 10000 }
-          ).toString()
-          assert.equal(source.content, pinned, `frozen runtime source: ${name}`)
-          return {
-            path: name,
-            sha256: sha(Buffer.from(pinned)).toString("hex"),
-          }
-        })
-      const upgraded = await deploy("contracts/bridge/Bridge.sol:Bridge")
-      fs.writeFileSync(
-        path.join(evidenceDirectory, "current-source-binding.json"),
-        JSON.stringify(
-          {
-            revision: currentRevision,
-            sourceHashes: hashes,
-            runtimeSizes,
-          },
-          null,
-          2
-        )
-      )
-      return upgraded
-    },
+    deployCurrent,
   }
 }
 
@@ -1038,16 +1054,19 @@ type ArchivedLegacyPayment = {
   tip: string
   height: number
   rawSha256: string
+  outputs: { value: number; script: string }[]
 }
 export async function legacyPaymentPhase(
   outputDirectory: string,
   witness: LegacyWitness,
   phase: "prepare" | "mine",
-  archived?: ArchivedLegacyPayment
+  archived?: ArchivedLegacyPayment,
+  fullSpendTarget?: string
 ): Promise<{
   archive: ArchivedLegacyPayment
   proof?: Proof
   blockHash?: string
+  dataDirectory?: string
 }> {
   assert.equal(
     sha(fs.readFileSync(path.join(CORE, "bitcoind"))).toString("hex"),
@@ -1220,18 +1239,17 @@ export async function legacyPaymentPhase(
         unsigned(0, 4, true),
       ])
       const sequence = Buffer.from("fdffffff", "hex")
-      const destinations = [
-        Buffer.from(`0014${witness.reveal.refundPubKeyHash.slice(2)}`, "hex"),
-        Buffer.from(witness.mainScript.slice(2), "hex"),
-      ]
+      const plannedOutputs = fullSpendTarget
+        ? [{ value: witness.sweep.value - 1000, script: `0014${fullSpendTarget.slice(2)}` }]
+        : [
+            { value: 18800, script: `0014${witness.reveal.refundPubKeyHash.slice(2)}` },
+            { value: 79200, script: witness.mainScript.slice(2) },
+          ]
       const outputs = Buffer.concat(
-        destinations.map((script, i) =>
-          Buffer.concat([
-            unsigned(i === 0 ? 18800 : 79200, 8, true),
-            compact(script.length),
-            script,
-          ])
-        )
+        plannedOutputs.map(({ value, script }) => {
+          const bytes = Buffer.from(script, "hex")
+          return Buffer.concat([unsigned(value, 8, true), compact(bytes.length), bytes])
+        })
       )
       const scriptCode = Buffer.from(
         `76a914${witness.wallet.pubKeyHash.slice(2)}88ac`,
@@ -1245,7 +1263,7 @@ export async function legacyPaymentPhase(
           outpoint,
           compact(scriptCode.length),
           scriptCode,
-          unsigned(99000, 8, true),
+          unsigned(witness.sweep.value, 8, true),
           sequence,
           hash256(outputs),
           unsigned(0, 4, true),
@@ -1253,7 +1271,7 @@ export async function legacyPaymentPhase(
         ])
       )
       const der = Buffer.from(
-        await secp.sign(digest, "3".padStart(64, "0"), {
+        await secp.sign(digest, witness.wallet.knownScalar.toString(16).padStart(64, "0"), {
           der: true,
           canonical: true,
         })
@@ -1270,7 +1288,7 @@ export async function legacyPaymentPhase(
         outpoint,
         Buffer.from("00", "hex"),
         sequence,
-        compact(2),
+        compact(plannedOutputs.length),
         outputs,
         compact(2),
         compact(signature.length),
@@ -1300,6 +1318,7 @@ export async function legacyPaymentPhase(
         tip,
         height,
         rawSha256: sha(Buffer.from(raw, "hex")).toString("hex"),
+        outputs: plannedOutputs,
       }
       fs.writeFileSync(
         path.join(outputDirectory, "signed-before-upgrade.json"),
@@ -1334,10 +1353,7 @@ export async function legacyPaymentPhase(
       archived.raw
     )
     assert.equal(rpc("gettxout", [witness.sweep.txid, 0]), null)
-    for (const [index, value, script] of [
-      [0, 18800, `0014${witness.reveal.refundPubKeyHash.slice(2)}`],
-      [1, 79200, witness.mainScript.slice(2)],
-    ] as const) {
+    for (const [index, { value, script }] of archived.outputs.entries()) {
       const output = rpc<{ value: number; scriptPubKey: { hex: string } }>(
         "gettxout",
         [archived.transaction.txidRPC, index]
@@ -1348,6 +1364,7 @@ export async function legacyPaymentPhase(
     const result = {
       archive: archived,
       blockHash,
+      dataDirectory,
       proof: proofFor(archived.transaction.txidRPC, blockHash),
     }
     fs.writeFileSync(

@@ -53,6 +53,22 @@ contract FrostLegacyOriginRegistryFixture {
             y
         );
     }
+
+    // K-09 local legacy membership root. These adapters permit public timeout
+    // and movement entry points; they do not qualify registry sanctions.
+    function isWalletMember(bytes32, uint32[] calldata, address account, uint256)
+        external view returns (bool)
+    {
+        return account == owner;
+    }
+
+    function seize(uint96, uint256, address, bytes32, uint32[] calldata) external {
+        require(msg.sender == walletOwner, "Fixture caller");
+    }
+
+    function closeWallet(bytes32) external {
+        require(msg.sender == walletOwner, "Fixture caller");
+    }
 }
 
 /// @dev Real regtest headers/inclusion, integer difficulty zero. No production
