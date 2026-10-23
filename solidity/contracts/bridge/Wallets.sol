@@ -25,6 +25,7 @@ import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import "./BitcoinTx.sol";
 import "./EcdsaLib.sol";
 import "../frost/FrostCurve.sol";
+import "../frost/FrostExposureState.sol";
 import "./BridgeState.sol";
 
 /// @title Wallet library
@@ -150,6 +151,12 @@ library Wallets {
         BridgeState.Storage storage self,
         BitcoinTx.UTXO calldata activeWalletMainUtxo
     ) external {
+        // C-10: no new ECDSA request once the legacy DKG drain has begun.
+        require(
+            self.frostExposure.creationMode ==
+                FrostExposureState.LEGACY_OPEN,
+            "Legacy wallet creation closed"
+        );
         require(
             self.ecdsaWalletRegistry.getWalletCreationState() ==
                 EcdsaDkg.State.IDLE,
@@ -208,6 +215,16 @@ library Wallets {
             msg.sender == address(self.ecdsaWalletRegistry),
             "Caller is not the ECDSA Wallet Registry"
         );
+        // C-10: in LegacyDraining only the DKG in flight when the drain
+        // began may finish, once; none after the cutover.
+        FrostExposureState.Storage storage exposure = self.frostExposure;
+        require(
+            exposure.creationMode == FrostExposureState.LEGACY_OPEN ||
+                (exposure.creationMode == FrostExposureState.LEGACY_DRAINING &&
+                    exposure.legacyDkgInFlight),
+            "Legacy wallet creation closed"
+        );
+        exposure.legacyDkgInFlight = false;
 
         require(FrostCurve.validPoint(publicKeyX, publicKeyY), "Invalid ECDSA curve point");
         // Compress wallet's public key and calculate Bitcoin's hash160 of it.

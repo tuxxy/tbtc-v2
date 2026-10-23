@@ -3,6 +3,7 @@ pragma solidity 0.8.17;
 
 import "../frost/FrostDepositAdmission.sol";
 import "../frost/FrostDepositSweep.sol";
+import "../frost/FrostExposureController.sol";
 
 /// @dev Difficulty-zero regtest oracle only. Production BitcoinTx still checks
 /// Merkle/coinbase inclusion, header linkage and individual header PoW. The
@@ -36,6 +37,18 @@ contract FrostDepositSweepFixture {
         bridge.depositTreasuryFeeDivisor = 100;
         bridge.depositTxMaxFee = 2000;
         bridge.depositRevealAheadPeriod = 30;
+        // C-10: an exposure controller this fixture governs, with test
+        // ceilings (D-10 values OPEN); every sweep credit reports to it.
+        FrostExposureController exposure = new FrostExposureController(
+            address(this),
+            address(this)
+        );
+        exposure.openBudgetPeriod(
+            type(uint64).max,
+            type(uint64).max,
+            keccak256("C-10 fixture budget; D-10 OPEN")
+        );
+        bridge.frostExposure.controller = address(exposure);
     }
 
     modifier onlyOwner() {

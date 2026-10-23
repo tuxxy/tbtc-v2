@@ -10,6 +10,7 @@ import "./FrostFundingState.sol";
 import "./FrostMovementState.sol";
 import {BTCUtils} from "@keep-network/bitcoin-spv-sol/contracts/BTCUtils.sol";
 import {BytesLib} from "@keep-network/bitcoin-spv-sol/contracts/BytesLib.sol";
+import "./FrostExposureState.sol";
 
 /// @notice C-06 FROST fund movement and receiving sweeps.
 /// A commitment binds ordered target labels and their immutable descriptors.
@@ -629,12 +630,67 @@ library FrostMovement {
                     "FROST drain conflict pays a target"
                 );
         }
+        releaseDrain(self, source);
+    }
+
+    /// @notice C-10 drain custody, keyed by source and committed main: reserved at
+    ///      the commitment, completed once by the proof.
+    function reportDrain(
+        BridgeState.Storage storage self,
+        bytes20 source,
+        uint256 value,
+        bool commit
+    ) external {
+        IFrostExposureController controller = FrostExposureState.controllerOf(
+            self.frostExposure
+        );
+        bytes32 id = FrostExposureState.drainId(
+            source,
+            self.registeredWallets[source].mainUtxoHash
+        );
+        if (commit) controller.reserve(id, uint64(value), 0);
+        else controller.completeOne(id, uint64(value), 0);
+    }
+
+    /// @notice C-10: called before every legacy proof that replaces or
+    /// deletes a source's main other than the drain itself (deposit sweep,
+    /// moved-funds sweep, redemption). A drain committed against that main
+    /// can never move it; release the drain and clear the commitment, so the
+    /// source recommits against its new main and reserves its full value
+    /// before any signature.
+    function releaseDrainForMainChange(
+        BridgeState.Storage storage self,
+        bytes20 source
+    ) external {
+        if (self.frostMovement.drainTargets[source].length == 0) return;
+        releaseDrain(self, source);
+    }
+
+    /// @dev Drops a legacy drain's inbound obligations, returns its C-10
+    /// custody reservation and clears the source's commitment: the committed
+    /// source main was spent elsewhere or replaced, so this drain can never
+    /// move it. Every release path clears the commitment, so the source
+    /// recommits against its current main whichever proof lands first.
+    function releaseDrain(BridgeState.Storage storage self, bytes20 source)
+        internal
+    {
+        bytes20[] storage targets = self.frostMovement.drainTargets[source];
         for (uint256 i = 0; i < targets.length; i++)
             self.frostMovement.inboundCommitments[
                 self.frost.wallets[targets[i]].id
             ]--;
         delete self.frostMovement.drainTargets[source];
         delete self.frostMovement.drainDescriptorHashes[source];
+        // C-10: recorded released; its custody stays counted (reading 8).
+        FrostExposureState.controllerOf(self.frostExposure).release(
+            FrostExposureState.drainId(
+                source,
+                self.registeredWallets[source].mainUtxoHash
+            )
+        );
+        delete self
+            .registeredWallets[source]
+            .movingFundsTargetWalletsCommitmentHash;
         emit FrostDrainReleased(source);
     }
 

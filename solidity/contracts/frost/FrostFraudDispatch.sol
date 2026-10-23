@@ -5,9 +5,10 @@ import "../bridge/BridgeState.sol";
 import "./IFrostFraudBridge.sol";
 import "./FrostFraud.sol";
 import "./FrostLifecycle.sol";
+import "./FrostExposure.sol";
 
 /// @notice Selector dispatch for the C-08 entrypoints, reached from the end of
-/// FrostMovementDispatch.dispatch.
+/// FrostMovementDispatch.dispatch. C-10 selectors continue to FrostExposure.
 library FrostFraudDispatch {
     function dispatch(BridgeState.Storage storage self, bytes calldata input)
         external
@@ -64,6 +65,17 @@ library FrostFraudDispatch {
         ) {
             (bytes32 id, uint64 nonce) = abi.decode(args, (bytes32, uint64));
             return abi.encode(FrostFraud.heartbeatDigest(id, nonce));
+        } else if (
+            selector == IFrostExposureBridge.reserveFrostDeposit.selector
+        ) {
+            (
+                bytes32 outpoint,
+                BitcoinTx.Info memory fundingTx,
+                BitcoinTx.Proof memory proof
+            ) = abi.decode(args, (bytes32, BitcoinTx.Info, BitcoinTx.Proof));
+            FrostExposure.reserveDeposit(self, outpoint, fundingTx, proof);
+        } else if (FrostExposure.handles(selector)) {
+            return FrostExposure.dispatch(self, input);
         } else {
             return FrostLifecycle.dispatch(self, input);
         }

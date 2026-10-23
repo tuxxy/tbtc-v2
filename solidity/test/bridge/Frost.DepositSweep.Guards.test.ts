@@ -171,6 +171,17 @@ describe("C-05 public sweep guards (synthetic SPV component, unqualified)", () =
       ethers.utils.id("UNQUALIFIED F3 component"),
       ethers.utils.id("synthetic network")
     )
+    // C-10: the exposure controller with test ceilings (D-10 values OPEN).
+    const exposure = await deploy("FrostExposureController", [
+      proxy.address,
+      (await ethers.getSigners())[0].address,
+    ])
+    await exposure.openBudgetPeriod(
+      ethers.BigNumber.from(2).pow(64).sub(1),
+      ethers.BigNumber.from(2).pow(64).sub(1),
+      ethers.utils.id("C-10 test budget; D-10 OPEN")
+    )
+    await frost.installFrostExposureController(exposure.address)
     await frost.setFrostFundingGates(true, true)
     token = await deploy("TBTC")
     vault = await deploy("TBTCVault", [

@@ -193,6 +193,20 @@ export async function publicFundedFixture(
       genesis
     )
   ).wait()
+  // C-10: the exposure controller with test ceilings (D-10 values OPEN).
+  const exposure = await deploy("FrostExposureController", [
+    bridge.address,
+    governance.address,
+  ])
+  const maxUint64 = ethers.BigNumber.from(2).pow(64).sub(1)
+  await (
+    await exposure.openBudgetPeriod(
+      maxUint64,
+      maxUint64,
+      ethers.utils.id("C-10 test budget; D-10 OPEN")
+    )
+  ).wait()
+  await (await frost.installFrostExposureController(exposure.address)).wait()
   await (await frost.setFrostFundingGates(true, true)).wait()
   expect(await bank.balanceOf(depositor.address)).to.equal(0)
   expect((await frost.frostWalletCustody(walletId)).value).to.equal(0)
@@ -270,6 +284,7 @@ export async function publicFundedFixture(
     registry,
     relay,
     verifier,
+    exposure,
     admin,
     implementation,
     sweep,

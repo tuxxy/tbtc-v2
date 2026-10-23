@@ -7,6 +7,7 @@ import "./FrostFundingState.sol";
 import "./FrostBitcoinEncoding.sol";
 import {BTCUtils} from "@keep-network/bitcoin-spv-sol/contracts/BTCUtils.sol";
 import {BytesLib} from "@keep-network/bitcoin-spv-sol/contracts/BytesLib.sol";
+import "./FrostExposureState.sol";
 
 /// @notice Exact C-05 deposit reveal. Reveal alone creates no Bank credit or
 /// recognized custody; those effects require the separate sweep SPV consumer.
@@ -57,6 +58,7 @@ library FrostDepositAdmission {
         uint32 outputIndex
     ) external returns (bytes32 outpoint) {
         require(funding.configuration.revealEnabled, "FROST reveal disabled");
+        FrostExposureState.requireAdmission(bridge.frostExposure);
         require(!funding.entered, "FROST funding reentry");
         require(terms.depositor == msg.sender, "FROST depositor");
         funding.entered = true;

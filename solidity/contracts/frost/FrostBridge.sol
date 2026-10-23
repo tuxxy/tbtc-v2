@@ -9,6 +9,7 @@ import "./FrostRedemptions.sol";
 import "./FrostRedemptionSettlement.sol";
 import "./FrostRedemptionRequests.sol";
 import "./FrostMovementDispatch.sol";
+import "./FrostExposureState.sol";
 
 interface IFrostGovernance {
     function governance() external view returns (address);
@@ -71,6 +72,12 @@ library FrostBridge {
                 self.frostFunding,
                 addressesEnabled,
                 revealEnabled
+            );
+            // C-10: deposits exist only under an installed exposure controller.
+            require(
+                !(addressesEnabled || revealEnabled) ||
+                    self.frostExposure.controller != address(0),
+                "FROST exposure not installed"
             );
         } else if (
             selector == IFrostFundingBridge.frostDepositConstruction.selector

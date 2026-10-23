@@ -24,6 +24,7 @@ import "./RebateStaking.sol";
 import "./Wallets.sol";
 
 import "../bank/Bank.sol";
+import "../frost/FrostMovement.sol";
 
 /// @notice Interface of the RedemptionWatchtower.
 interface IRedemptionWatchtower {
@@ -729,6 +730,11 @@ library Redemption {
             "Transaction fee is too high"
         );
 
+        // C-10: release a FROST drain committed against the replaced main.
+        // Inlined: an upgradeable contract built against this library may not
+        // link external libraries (RedemptionWatchtower).
+        if (self.frostMovement.drainTargets[walletPubKeyHash].length > 0)
+            FrostMovement.releaseDrain(self, walletPubKeyHash);
         if (outputsInfo.changeValue > 0) {
             // If the change value is grater than zero, it means the change
             // output exists and can be used as new wallet's main UTXO.

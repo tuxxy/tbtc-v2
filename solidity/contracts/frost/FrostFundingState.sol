@@ -40,6 +40,9 @@ library FrostFundingState {
         uint64 maximumSweepFee;
         uint64 revealedAt;
         uint64 sweptAt;
+        // C-10: when the deposit was reserved against the exposure budget.
+        // It shares sweptAt's slot, which the sweep proof already writes.
+        uint64 reservedAt;
     }
     struct Storage {
         mapping(bytes32 => Deposit) deposits;
