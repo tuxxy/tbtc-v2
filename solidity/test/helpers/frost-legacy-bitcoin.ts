@@ -986,9 +986,13 @@ export async function publicLegacyOriginFixture(
       )
       assert(current)
       const hashes = Object.entries(current.input.sources)
+        // Generated, gitignored re-exports of dependencies are not repository
+        // sources; a full compile can place them in Bridge's build-info.
         .filter(
           ([name]) =>
-            name.startsWith("contracts/") && !name.startsWith("contracts/test/")
+            name.startsWith("contracts/") &&
+            !name.startsWith("contracts/test/") &&
+            !name.startsWith("contracts/hardhat-dependency-compiler/")
         )
         .map(([name, source]) => {
           const pinned = execFileSync(
