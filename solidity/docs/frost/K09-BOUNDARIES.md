@@ -39,3 +39,37 @@ mutation campaign or changes to Bridge.sol are part of this package.
 2. Production SPV vectors form a second run, separate from the live regtest
    lifecycle; they do not qualify the relay deployment or Bitcoin operations.
 3. K-09a does not close K-09b, V-05, C-07 qualification or deployment gates.
+
+## As implemented (23 October 2026)
+
+`Frost.LifecycleUpgrade` supplies three checkpoints built only through public
+entry points on the immutable 76f7905 baseline: an unswept deposit and open
+heartbeat fraud challenge, an outgoing commitment, and an incoming sweep.
+Each actual transparent-proxy upgrade retains legacy slots 0..128 and the
+relevant financial/obligation frame. Real Core transactions complete the
+pending sweep and both sides of the legacy movement. Duplicate calls retain
+the frame and fail at their intended guards. The existing signed-redemption
+and watchtower upgrade witness also passes unchanged.
+
+The legacy helper now exposes a before-sweep checkpoint, installs a real
+reimbursement pool, and can continue a known-key Core spend to the committed
+legacy target. The controlled registry exposes only local membership,
+seize and close adapters needed by these public legacy entry points.
+The test keys are public scalars 3 and 4; neither registry sanctions nor
+threshold ECDSA qualification is claimed by these fixtures.
+
+`Frost.LifecycleSpv` runs production BitcoinTx validation at difficulty
+7,019,199,231,177 and factor six, separately from live regtest evidence.
+Six mainnet headers pass. Five negative cases attribute insufficient depth,
+bad linkage, bad header work and bad transaction/coinbase inclusion to their
+specific guards. `hardhat.k09.config.ts` retains EIP-170, disables the gas
+reporter's replacement reporter and emits machine-readable case results.
+
+Primary run: 6/6 SPV and 9/9 upgrade/reconciliation cases. The three new
+upgrade cases were rerun after financial-frame review; the two movement
+cases were further checked for their exact duplicate-call revert reason.
+Evidence: `implementation/K-09/local-2026-10-23/`, including `run/result.json`,
+`upgrade-review.log` and `upgrade-duplicate-review.log`. Matching host record:
+keep-core `test/frost/K09.md`. Results are concrete testing only.
+All readings above remain OPEN for owner review. Production Bridge/libraries
+are unchanged; no mutation campaign or production gate is completed.
