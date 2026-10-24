@@ -123,8 +123,133 @@ describe("K-09 pending legacy obligations across actual upgrade", () => {
     expect(checked).eq(true)
   })
 
-  for (const checkpoint of ["outgoing", "incoming"] as const) {
-    it(`retains a pending ${checkpoint} transfer, then completes both movement and sweep on Core`, async () => {
+  it("preserves the original redemption deadline when redeemer and timeout notifier alias", async () => {
+    const f = await publicLegacyOriginFixture(
+      path.join(root(), "redemption-timeout-alias")
+    )
+    const beforeUser = await f.bank.balanceOf(f.depositor.address)
+    const escrow = await f.bank.balanceOf(f.bridge.address)
+    const treasury = await f.bank.balanceOf(f.treasury.address)
+    expect(escrow).gt(0)
+    const pending = await f.bridge.pendingRedemptions(f.requestKey)
+    const slots = await originalSlots(f.bridge.address)
+    await f.admin.upgrade(f.bridge.address, (await f.deployCurrent()).address)
+    expect(await originalSlots(f.bridge.address)).deep.eq(slots)
+    expect(await f.bridge.pendingRedemptions(f.requestKey)).deep.eq(pending)
+    await ethers.provider.send("evm_setNextBlockTimestamp", [
+      f.deadline.toNumber() + 1,
+    ])
+    await ethers.provider.send("evm_mine", [])
+    await f.bridge
+      .connect(f.depositor)
+      .notifyRedemptionTimeout(
+        f.witness.wallet.pubKeyHash,
+        [1],
+        f.recipientScript
+      )
+    expect(await f.bank.balanceOf(f.depositor.address)).eq(
+      beforeUser.add(escrow)
+    )
+    expect(await f.bank.balanceOf(f.bridge.address)).eq(0)
+    expect(await f.bank.balanceOf(f.treasury.address)).eq(treasury)
+    const frame = async () =>
+      JSON.stringify(
+        await Promise.all([
+          f.bridge.wallets(f.witness.wallet.pubKeyHash),
+          f.bridge.pendingRedemptions(f.requestKey),
+          f.bridge.timedOutRedemptions(f.requestKey),
+          f.bank.balanceOf(f.depositor.address),
+          f.bank.balanceOf(f.bridge.address),
+          f.bank.balanceOf(f.treasury.address),
+        ])
+      )
+    const terminal = await frame()
+    const [other] = await ethers.getSigners()
+    await expect(
+      f.bridge
+        .connect(other)
+        .notifyRedemptionTimeout(
+          f.witness.wallet.pubKeyHash,
+          [1],
+          f.recipientScript
+        )
+    ).to.be.revertedWith("Redemption request does not exist")
+    expect(await frame()).eq(terminal)
+  })
+
+  it("preserves a public fraud challenge through upgrade until its original timeout", async () => {
+    const f = await publicLegacyOriginFixture(
+      path.join(root(), "fraud-timeout")
+    )
+    await ethers.provider.send("evm_setNextBlockTimestamp", [
+      f.deadline.toNumber() + 1,
+    ])
+    await ethers.provider.send("evm_mine", [])
+    await f.bridge.notifyRedemptionTimeout(
+      f.witness.wallet.pubKeyHash,
+      [1],
+      f.recipientScript
+    )
+    const publicKey = `0x${f.witness.wallet.publicKeyX.slice(
+      2
+    )}${f.witness.wallet.publicKeyY.slice(2)}`
+    const heartbeat = "0xffffffffffffffff0000000000e0eed7"
+    const preimage = ethers.utils.sha256(heartbeat)
+    const digest = ethers.utils.sha256(preimage)
+    const signing = new ethers.utils.SigningKey(
+      ethers.utils.hexZeroPad("0x03", 32)
+    )
+    const signature = ethers.utils.splitSignature(signing.signDigest(digest))
+    const parameters = await f.bridge.fraudParameters()
+    await f.bridge.submitFraudChallenge(publicKey, preimage, signature, {
+      value: parameters.fraudChallengeDepositAmount,
+    })
+    const key = ethers.utils.solidityKeccak256(
+      ["bytes", "bytes32"],
+      [publicKey, digest]
+    )
+    const challenge = await f.bridge.fraudChallenges(key)
+    const frame = async () => JSON.stringify(await Promise.all([
+      f.bridge.wallets(f.witness.wallet.pubKeyHash),
+      f.bridge.fraudChallenges(key),
+      f.bridge.pendingRedemptions(f.requestKey),
+      f.bridge.timedOutRedemptions(f.requestKey),
+      f.bank.balanceOf(f.depositor.address),
+      f.bank.balanceOf(f.bridge.address),
+      f.bank.balanceOf(f.treasury.address),
+      ethers.provider.getBalance(f.bridge.address),
+      ethers.provider.getBalance(f.depositor.address),
+      ethers.provider.getBalance(f.treasury.address),
+    ]))
+    const before = await frame()
+    const slots = await originalSlots(f.bridge.address)
+    await f.admin.upgrade(f.bridge.address, (await f.deployCurrent()).address)
+    expect(await frame()).eq(before)
+    expect(await originalSlots(f.bridge.address)).deep.eq(slots)
+    expect(await f.bridge.fraudChallenges(key)).deep.eq(challenge)
+    await ethers.provider.send("evm_setNextBlockTimestamp", [
+      Number(challenge.reportedAt) +
+        Number(parameters.fraudChallengeDefeatTimeout) +
+        1,
+    ])
+    await ethers.provider.send("evm_mine", [])
+    await f.bridge.notifyFraudChallengeDefeatTimeout(publicKey, [1], preimage)
+    expect((await f.bridge.wallets(f.witness.wallet.pubKeyHash)).state).eq(5)
+    expect((await f.bridge.fraudChallenges(key)).resolved).eq(true)
+    const terminal = await frame()
+    await expect(
+      f.bridge.notifyFraudChallengeDefeatTimeout(publicKey, [1], preimage)
+    ).to.be.revertedWith("Fraud challenge has already been resolved")
+    expect(await frame()).eq(terminal)
+  })
+
+  for (const checkpoint of [
+    "outgoing",
+    "incoming",
+    "outgoing-timeout",
+    "incoming-timeout",
+  ] as const) {
+    it(`retains a pending ${checkpoint} transfer across upgrade, then discharges it`, async () => {
       const evidence = path.join(root(), checkpoint)
       const f = await publicLegacyOriginFixture(evidence)
       // The publicly escrowed request is refunded at its ORIGINAL deadline,
@@ -198,7 +323,7 @@ describe("K-09 pending legacy obligations across actual upgrade", () => {
             f.witness.wallet.pubKeyHash
           )
       let mined: Awaited<ReturnType<typeof legacyPaymentPhase>>
-      if (checkpoint === "incoming") {
+      if (checkpoint.startsWith("incoming")) {
         mined = await legacyPaymentPhase(
           path.join(evidence, "move"),
           f.witness,
@@ -216,6 +341,47 @@ describe("K-09 pending legacy obligations across actual upgrade", () => {
       await f.admin.upgrade(f.bridge.address, current.address)
       expect(await frame()).eq(before)
       expect(await originalSlots(f.bridge.address)).deep.eq(slots)
+      if (checkpoint.endsWith("timeout")) {
+        const parameters = await f.bridge.movingFundsParameters()
+        const request = await f.bridge.movedFundsSweepRequests(incomingKey)
+        const wallet = await f.bridge.wallets(f.witness.wallet.pubKeyHash)
+        const deadline =
+          checkpoint === "outgoing-timeout"
+            ? wallet.movingFundsRequestedAt + parameters.movingFundsTimeout
+            : request.createdAt + parameters.movedFundsSweepTimeout
+        await ethers.provider.send("evm_setNextBlockTimestamp", [
+          Number(deadline) + 1,
+        ])
+        await ethers.provider.send("evm_mine", [])
+        const notify = () =>
+          checkpoint === "outgoing-timeout"
+            ? f.bridge.notifyMovingFundsTimeout(f.witness.wallet.pubKeyHash, [
+                1,
+              ])
+            : f.bridge.notifyMovedFundsSweepTimeout(movedHash, 0, [1])
+        await notify()
+        expect(
+          (
+            await f.bridge.wallets(
+              checkpoint === "outgoing-timeout"
+                ? f.witness.wallet.pubKeyHash
+                : targetPkh
+            )
+          ).state
+        ).eq(5)
+        if (checkpoint === "incoming-timeout")
+          expect(
+            (await f.bridge.movedFundsSweepRequests(incomingKey)).state
+          ).eq(3)
+        const terminal = await frame()
+        await expect(notify()).to.be.revertedWith(
+          checkpoint === "outgoing-timeout"
+            ? "Wallet must be in MovingFunds state"
+            : "Sweep request must be in Pending state"
+        )
+        expect(await frame()).eq(terminal)
+        return
+      }
       if (checkpoint === "outgoing") {
         mined = await legacyPaymentPhase(
           path.join(evidence, "move"),
@@ -279,13 +445,27 @@ describe("K-09 pending legacy obligations across actual upgrade", () => {
       await expect(
         f.bridge
           .connect(f.maintainer)
-          .submitMovedFundsSweepProof(
-            sweep.archive.transaction,
-            swept.proof,
-            empty
-          )
-      ).to.be.revertedWith("Invalid main UTXO data")
+          .submitMovedFundsSweepProof(sweep.archive.transaction, swept.proof, {
+            txHash: littleHash(sweep.archive.transaction.txidRPC),
+            txOutputIndex: 0,
+            txOutputValue: 97000,
+          })
+      ).to.be.revertedWith(
+        "Moved funds sweep transaction must have a proper inputs count"
+      )
       expect(await frame()).eq(settled)
+      const closing = await f.bridge.wallets(f.witness.wallet.pubKeyHash)
+      const closingParameters = await f.bridge.walletParameters()
+      await ethers.provider.send("evm_setNextBlockTimestamp", [
+        Number(closing.closingStartedAt) +
+          Number(closingParameters.walletClosingPeriod) +
+          1,
+      ])
+      await ethers.provider.send("evm_mine", [])
+      await f.bridge.notifyWalletClosingPeriodElapsed(
+        f.witness.wallet.pubKeyHash
+      )
+      expect((await f.bridge.wallets(f.witness.wallet.pubKeyHash)).state).eq(4)
       fs.writeFileSync(
         path.join(evidence, "upgrade-obligations.json"),
         JSON.stringify(
@@ -309,4 +489,19 @@ describe("K-09 pending legacy obligations across actual upgrade", () => {
       )
     })
   }
+})
+
+// Isolated production-library guard control. Its storage is deliberately seeded;
+// it does not stand in for the public upgrade/Core replay cases above.
+describe("K-09 consumed incoming request component guard", () => {
+  it("consumes a pending request once and rejects it at the request-state guard", async () => {
+    const fixture = await (await ethers.getContractFactory("FrostConsumedSweepFixture")).deploy()
+    expect(await fixture.callStatic.consume()).eq(1000)
+    await fixture.consume()
+    const terminal = await fixture.frame()
+    expect(terminal[0]).eq(2)
+    expect(terminal[1]).eq(0)
+    await expect(fixture.consume()).to.be.revertedWith("Sweep request must be in Pending state")
+    expect(await fixture.frame()).deep.eq(terminal)
+  })
 })

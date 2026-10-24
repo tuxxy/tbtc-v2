@@ -73,3 +73,35 @@ Evidence: `implementation/K-09/local-2026-10-23/`, including `run/result.json`,
 keep-core `test/frost/K09.md`. Results are concrete testing only.
 All readings above remain OPEN for owner review. Production Bridge/libraries
 are unchanged; no mutation campaign or production gate is completed.
+
+## Review corrections (24 October 2026)
+
+The current suite has seven public upgrade cases plus six existing reconciliation
+cases, plus one isolated seeded request-state guard control (14 total), alongside six realistic-header library cases. Added cases
+retain original redemption and fraud deadlines, outgoing and incoming timeout
+obligations, alias the redeemer with its timeout notifier, reject repeated
+discharge, and close the source after completed movement. The incoming replay
+supplies the current target main and reaches the input-count guard: the original
+sweep has one input, whereas an existing main requires two. The separate seeded
+component control directly exercises successful pending-request consumption and
+then rejection at the consumed-request guard, preserving its state frame.
+The native digest executable is SHA256 pinned; there is no temporary fallback.
+
+The fresh paired execution is recorded under
+`implementation/K-09/review-feedback-2026-10-24/run/result.json`. Its status and
+source/artifact manifests determine current acceptance. Earlier executions above
+are historical and are not reused for changed-source acceptance.
+
+The realistic-header suite exercises BitcoinTx library validation; it does not
+establish the full FROST producer/entry-point join at production settings. The
+paired host CLI now derives proof depth from the Bridge factor and relay epochs,
+using its explicit confirmation argument as an additional floor. Its retarget
+and DIFF1 tests use a controlled assembler. That remaining full proof join is an
+OPEN K-09 exit requirement owned by the SPV integration owner.
+
+The separate native legacy-to-FROST drain is a seeded component control. A public
+legacy obligation through upgrade, cutover and containment into FROST drain and
+incoming sweep remains OPEN under the integration lead. Real node dispatch and
+firewall qualification remain OPEN under the node integration lead; the local
+host witness uses two in-process bundles and firewall.Disabled. These are not
+approved deferrals. See the paired K09-COVERAGE.json for all review dispositions.

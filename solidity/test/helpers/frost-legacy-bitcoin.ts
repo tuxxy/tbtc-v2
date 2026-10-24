@@ -211,6 +211,18 @@ export function legacyDepositScript(options: Options): {
   return { witnessScript, refundTimestamp, walletPublicKey, refundPublicKey }
 }
 
+// Reviewed native parser. No implicit temporary-directory fallback is allowed.
+function requireDigestBinary(override?: string): string {
+  const binary = override || process.env.FROST_C04_DIGEST_BINARY
+  assert(binary, "FROST_C04_DIGEST_BINARY is required")
+  assert.equal(
+    sha(fs.readFileSync(binary)).toString("hex"),
+    "6be09a87119822348daf05d2177855c72a03294c99628d9c746829d4e58b84ba",
+    "legacy digest binary checksum mismatch"
+  )
+  return binary
+}
+
 export async function runLegacyCoreWitness(
   outputDirectory: string,
   options: Options
@@ -223,10 +235,7 @@ export async function runLegacyCoreWitness(
   const bitcoinAmount = `${satoshis / 100000000n}.${(satoshis % 100000000n)
     .toString()
     .padStart(8, "0")}`
-  const digestBinary =
-    options.digestBinary ||
-    process.env.FROST_C04_DIGEST_BINARY ||
-    "/private/tmp/c04-public-funding-20261014/frost-digest"
+  const digestBinary = requireDigestBinary(options.digestBinary)
   assert.equal(
     sha(fs.readFileSync(path.join(CORE, "bitcoind"))).toString("hex"),
     CORE_SHA
@@ -803,10 +812,7 @@ export async function publicLegacyOriginFixture(
       .map(([name, source]) => {
         const pinned = execFileSync(
           "git",
-          [
-            "show",
-            `${currentRevision}:solidity/${name}`,
-          ],
+          ["show", `${currentRevision}:solidity/${name}`],
           { cwd: repository, timeout: 10000 }
         ).toString()
         assert.equal(source.content, pinned, `frozen runtime source: ${name}`)
@@ -1077,9 +1083,7 @@ export async function legacyPaymentPhase(
     phase === "prepare" ? witness.dataDirectory : archived?.dataDirectory
   assert(base, "stopped Core base required")
   const dataDirectory = copyStoppedCoreTemplate(base, `c04-legacy-${phase}-`)
-  const digestBinary =
-    process.env.FROST_C04_DIGEST_BINARY ||
-    "/private/tmp/c04-public-funding-20261014/frost-digest"
+  const digestBinary = requireDigestBinary()
   const portLease = await reserveCorePort()
   const { port } = portLease
   const fd = fs.openSync(
@@ -1240,15 +1244,27 @@ export async function legacyPaymentPhase(
       ])
       const sequence = Buffer.from("fdffffff", "hex")
       const plannedOutputs = fullSpendTarget
-        ? [{ value: witness.sweep.value - 1000, script: `0014${fullSpendTarget.slice(2)}` }]
+        ? [
+            {
+              value: witness.sweep.value - 1000,
+              script: `0014${fullSpendTarget.slice(2)}`,
+            },
+          ]
         : [
-            { value: 18800, script: `0014${witness.reveal.refundPubKeyHash.slice(2)}` },
+            {
+              value: 18800,
+              script: `0014${witness.reveal.refundPubKeyHash.slice(2)}`,
+            },
             { value: 79200, script: witness.mainScript.slice(2) },
           ]
       const outputs = Buffer.concat(
         plannedOutputs.map(({ value, script }) => {
           const bytes = Buffer.from(script, "hex")
-          return Buffer.concat([unsigned(value, 8, true), compact(bytes.length), bytes])
+          return Buffer.concat([
+            unsigned(value, 8, true),
+            compact(bytes.length),
+            bytes,
+          ])
         })
       )
       const scriptCode = Buffer.from(
@@ -1271,10 +1287,14 @@ export async function legacyPaymentPhase(
         ])
       )
       const der = Buffer.from(
-        await secp.sign(digest, witness.wallet.knownScalar.toString(16).padStart(64, "0"), {
-          der: true,
-          canonical: true,
-        })
+        await secp.sign(
+          digest,
+          witness.wallet.knownScalar.toString(16).padStart(64, "0"),
+          {
+            der: true,
+            canonical: true,
+          }
+        )
       )
       const publicKey = Buffer.from(
         witness.wallet.compressedPublicKey.slice(2),
