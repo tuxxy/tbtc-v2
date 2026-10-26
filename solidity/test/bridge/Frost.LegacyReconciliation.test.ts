@@ -3,6 +3,7 @@ import { expect } from "chai"
 import { utils } from "ethers"
 import fs from "fs"
 import path from "path"
+import { completeLegacyCutover } from "../helpers/frost-legacy-cutover"
 import {
   legacyDepositScript,
   runLegacyCoreWitness,
@@ -368,6 +369,8 @@ describe("D08 legacy reconciliation piece 2b: signed payment across actual upgra
     )
     expect(await frame()).eq(before)
     expect(await oldSlots()).deep.eq(slots)
+    await completeLegacyCutover(f.bridge)
+    expect(await frame()).eq(before)
     // Honor the accrued real watchtower delay; do not change policy/timeouts.
     const matureAt =
       Number(oldRequest.requestedAt) + f.watchtowerDelay.toNumber()

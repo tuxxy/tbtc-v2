@@ -3,6 +3,7 @@ import { ethers } from "hardhat"
 import { expect } from "chai"
 import fs from "fs"
 import path from "path"
+import { completeLegacyCutover } from "../helpers/frost-legacy-cutover"
 import {
   publicLegacyOriginFixture,
   legacyPaymentPhase,
@@ -90,6 +91,8 @@ describe("K-09 pending legacy obligations across actual upgrade", () => {
         await admin.upgrade(bridge.address, current.address)
         expect(await frame()).eq(before)
         expect(await originalSlots(bridge.address)).deep.eq(slots)
+        await completeLegacyCutover(bridge)
+        expect(await frame()).eq(before)
         await bridge.defeatFraudChallengeWithHeartbeat(publicKey, heartbeat)
         expect((await bridge.fraudChallenges(challengeKey)).resolved).eq(true)
         const resolved = await frame()
@@ -135,6 +138,7 @@ describe("K-09 pending legacy obligations across actual upgrade", () => {
     const slots = await originalSlots(f.bridge.address)
     await f.admin.upgrade(f.bridge.address, (await f.deployCurrent()).address)
     expect(await originalSlots(f.bridge.address)).deep.eq(slots)
+    await completeLegacyCutover(f.bridge)
     expect(await f.bridge.pendingRedemptions(f.requestKey)).deep.eq(pending)
     await ethers.provider.send("evm_setNextBlockTimestamp", [
       f.deadline.toNumber() + 1,
@@ -209,23 +213,28 @@ describe("K-09 pending legacy obligations across actual upgrade", () => {
       [publicKey, digest]
     )
     const challenge = await f.bridge.fraudChallenges(key)
-    const frame = async () => JSON.stringify(await Promise.all([
-      f.bridge.wallets(f.witness.wallet.pubKeyHash),
-      f.bridge.fraudChallenges(key),
-      f.bridge.pendingRedemptions(f.requestKey),
-      f.bridge.timedOutRedemptions(f.requestKey),
-      f.bank.balanceOf(f.depositor.address),
-      f.bank.balanceOf(f.bridge.address),
-      f.bank.balanceOf(f.treasury.address),
-      ethers.provider.getBalance(f.bridge.address),
-      ethers.provider.getBalance(f.depositor.address),
-      ethers.provider.getBalance(f.treasury.address),
-    ]))
+    const frame = async () =>
+      JSON.stringify(
+        await Promise.all([
+          f.bridge.wallets(f.witness.wallet.pubKeyHash),
+          f.bridge.fraudChallenges(key),
+          f.bridge.pendingRedemptions(f.requestKey),
+          f.bridge.timedOutRedemptions(f.requestKey),
+          f.bank.balanceOf(f.depositor.address),
+          f.bank.balanceOf(f.bridge.address),
+          f.bank.balanceOf(f.treasury.address),
+          ethers.provider.getBalance(f.bridge.address),
+          ethers.provider.getBalance(f.depositor.address),
+          ethers.provider.getBalance(f.treasury.address),
+        ])
+      )
     const before = await frame()
     const slots = await originalSlots(f.bridge.address)
     await f.admin.upgrade(f.bridge.address, (await f.deployCurrent()).address)
     expect(await frame()).eq(before)
     expect(await originalSlots(f.bridge.address)).deep.eq(slots)
+    await completeLegacyCutover(f.bridge)
+    expect(await frame()).eq(before)
     expect(await f.bridge.fraudChallenges(key)).deep.eq(challenge)
     await ethers.provider.send("evm_setNextBlockTimestamp", [
       Number(challenge.reportedAt) +
@@ -296,12 +305,29 @@ describe("K-09 pending legacy obligations across actual upgrade", () => {
       )
       const movedHash = littleHash(prepared.archive.transaction.txidRPC)
       const incomingKey = outpoint(movedHash)
+      const crossHeartbeat = "0xffffffffffffffff0000000000e0eed7"
+      const crossPreimage = ethers.utils.sha256(crossHeartbeat)
+      const crossDigest = ethers.utils.sha256(crossPreimage)
+      const crossKey = ethers.utils.solidityKeccak256(
+        ["bytes", "bytes32"],
+        [`0x${targetPub.slice(4)}`, crossDigest]
+      )
+      if (checkpoint === "outgoing") {
+        const parameters = await f.bridge.fraudParameters()
+        await f.bridge.submitFraudChallenge(
+          `0x${targetPub.slice(4)}`,
+          crossPreimage,
+          ethers.utils.splitSignature(targetKey.signDigest(crossDigest)),
+          { value: parameters.fraudChallengeDepositAmount }
+        )
+      }
       const frame = async () =>
         JSON.stringify(
           await Promise.all([
             f.bridge.wallets(f.witness.wallet.pubKeyHash),
             f.bridge.wallets(targetPkh),
             f.bridge.movedFundsSweepRequests(incomingKey),
+            f.bridge.fraudChallenges(crossKey),
             f.bridge.spentMainUTXOs(outpoint(f.witness.mainUTXO.txHash)),
             f.bridge.spentMainUTXOs(incomingKey),
             f.bridge.pendingRedemptions(f.requestKey),
@@ -341,6 +367,8 @@ describe("K-09 pending legacy obligations across actual upgrade", () => {
       await f.admin.upgrade(f.bridge.address, current.address)
       expect(await frame()).eq(before)
       expect(await originalSlots(f.bridge.address)).deep.eq(slots)
+      await completeLegacyCutover(f.bridge)
+      expect(await frame()).eq(before)
       if (checkpoint.endsWith("timeout")) {
         const parameters = await f.bridge.movingFundsParameters()
         const request = await f.bridge.movedFundsSweepRequests(incomingKey)
@@ -390,6 +418,14 @@ describe("K-09 pending legacy obligations across actual upgrade", () => {
           prepared.archive
         )
         await proveMovement(mined.proof)
+        // Interleave source movement with the target's independently pending
+        // challenge. Neither may consume or discard the other's obligation.
+        expect((await f.bridge.fraudChallenges(crossKey)).resolved).eq(false)
+        await f.bridge.defeatFraudChallengeWithHeartbeat(
+          `0x${targetPub.slice(4)}`,
+          crossHeartbeat
+        )
+        expect((await f.bridge.fraudChallenges(crossKey)).resolved).eq(true)
       }
       expect((await f.bridge.wallets(f.witness.wallet.pubKeyHash)).state).eq(3)
       expect((await f.bridge.movedFundsSweepRequests(incomingKey)).state).eq(1)
@@ -495,13 +531,17 @@ describe("K-09 pending legacy obligations across actual upgrade", () => {
 // it does not stand in for the public upgrade/Core replay cases above.
 describe("K-09 consumed incoming request component guard", () => {
   it("consumes a pending request once and rejects it at the request-state guard", async () => {
-    const fixture = await (await ethers.getContractFactory("FrostConsumedSweepFixture")).deploy()
+    const fixture = await (
+      await ethers.getContractFactory("FrostConsumedSweepFixture")
+    ).deploy()
     expect(await fixture.callStatic.consume()).eq(1000)
     await fixture.consume()
     const terminal = await fixture.frame()
     expect(terminal[0]).eq(2)
     expect(terminal[1]).eq(0)
-    await expect(fixture.consume()).to.be.revertedWith("Sweep request must be in Pending state")
+    await expect(fixture.consume()).to.be.revertedWith(
+      "Sweep request must be in Pending state"
+    )
     expect(await fixture.frame()).deep.eq(terminal)
   })
 })

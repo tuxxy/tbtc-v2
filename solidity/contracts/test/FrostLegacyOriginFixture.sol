@@ -34,6 +34,15 @@ contract FrostLegacyOriginRegistryFixture {
         return creating ? 1 : 0;
     }
 
+    // Controlled legacy DKG/pool observation for the public cutover witness.
+    function sortitionPool() external view returns (address) {
+        return address(this);
+    }
+
+    function isLocked() external pure returns (bool) {
+        return false;
+    }
+
     function requestNewWallet() external {
         require(msg.sender == walletOwner && !creating, "Fixture request");
         creating = true;
