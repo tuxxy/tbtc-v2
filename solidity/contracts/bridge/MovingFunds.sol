@@ -219,7 +219,9 @@ library MovingFunds {
             self.frost.wallets[targetWallets[0]].state !=
             FrostWallets.State.Unknown;
         require(
-            !drain || self.frostMovement.drainEnabled,
+            drain
+                ? self.frostMovement.drainEnabled
+                : self.frostExposure.creationMode != FrostExposureState.FROST_ONLY,
             "FROST drain disabled"
         );
         // C-10: a below-dust source closes without moving its main, which
