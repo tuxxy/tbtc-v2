@@ -218,12 +218,15 @@ library MovingFunds {
         bool drain = targetWallets.length > 0 &&
             self.frost.wallets[targetWallets[0]].state !=
             FrostWallets.State.Unknown;
-        require(
-            drain
-                ? self.frostMovement.drainEnabled
-                : self.frostExposure.creationMode != FrostExposureState.FROST_ONLY,
-            "FROST drain disabled"
-        );
+        if (drain) {
+            require(self.frostMovement.drainEnabled, "FROST drain disabled");
+        } else {
+            require(
+                self.frostExposure.creationMode !=
+                    FrostExposureState.FROST_ONLY,
+                "Legacy targets disabled after cutover"
+            );
+        }
         // C-10: a below-dust source closes without moving its main, which
         // would strand a drain's reservation and its targets' obligations.
         require(
@@ -271,49 +274,19 @@ library MovingFunds {
 
     /// @notice Resets the moving funds timeout for the given wallet if the
     ///         target wallet commitment cannot be submitted due to a lack
-    ///         of live wallets in the system.
+    ///         of admissible target wallets in the current creation mode.
     /// @param walletPubKeyHash 20-byte public key hash of the moving funds wallet
     /// @dev Requirements:
     ///      - The wallet must be in the MovingFunds state,
     ///      - The target wallets commitment must not be already submitted for
     ///        the given moving funds wallet,
-    ///      - Live wallets count must be zero,
+    ///      - No legacy targets exist, or FrostOnly has no admissible drain,
     ///      - The moving funds timeout reset delay must be elapsed.
     function resetMovingFundsTimeout(
         BridgeState.Storage storage self,
         bytes20 walletPubKeyHash
     ) external {
-        Wallets.Wallet storage wallet = self.registeredWallets[
-            walletPubKeyHash
-        ];
-
-        require(
-            wallet.state == Wallets.WalletState.MovingFunds,
-            "Wallet must be in MovingFunds state"
-        );
-
-        // If the moving funds wallet already submitted their target wallets
-        // commitment, there is no point to reset the timeout since the
-        // wallet can make the BTC transaction and submit the proof.
-        require(
-            wallet.movingFundsTargetWalletsCommitmentHash == bytes32(0),
-            "Target wallets commitment already submitted"
-        );
-
-        require(self.liveWalletsCount == 0, "Live wallets count must be zero");
-
-        require(
-            /* solhint-disable-next-line not-rely-on-time */
-            block.timestamp >
-                wallet.movingFundsRequestedAt +
-                    self.movingFundsTimeoutResetDelay,
-            "Moving funds timeout cannot be reset yet"
-        );
-
-        /* solhint-disable-next-line not-rely-on-time */
-        wallet.movingFundsRequestedAt = uint32(block.timestamp);
-
-        emit MovingFundsTimeoutReset(walletPubKeyHash);
+        FrostMovement.resetLegacyTimeout(self, walletPubKeyHash);
     }
 
     /// @notice Used by the wallet to prove the BTC moving funds transaction
@@ -597,7 +570,9 @@ library MovingFunds {
         require(
             frostOutputs ==
                 (
-                    self.frostMovement.drainTargets[processInfo.sourceWallet]
+                    self
+                        .frostMovement
+                        .drainTargets[processInfo.sourceWallet]
                         .length > 0
                         ? outputsCount
                         : 0

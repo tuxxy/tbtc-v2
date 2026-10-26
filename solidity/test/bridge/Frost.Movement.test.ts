@@ -753,6 +753,131 @@ describe("C-06 legacy routes: ECDSA to FROST drain and the stranded case", () =>
     snapshot = await network.provider.send("evm_snapshot")
   })
 
+  for (const blocked of ["contained", "disabled", "empty"] as const) {
+    for (const live of [false, true]) {
+      it(`keeps an uncommitted post-cutover legacy obligation resettable: ${blocked}, live=${live}`, async () => {
+        const pkh = await legacyWallet()
+        const main = await legacyMain(pkh, 400000)
+        await legacyState(pkh, LegacyState.MovingFunds)
+        const other = live ? await legacyWallet() : undefined
+        await w.frost.setFrostDrainEnabled(true)
+        await w.frost.beginLegacyDkgDrain()
+        await w.frost.completeFrostCutover(
+          ethers.utils.id("K09 uncommitted moving obligation")
+        )
+        if (blocked === "contained")
+          await w.exposure.contain(ethers.utils.id("K09 emergency"))
+        if (blocked === "disabled") await w.frost.setFrostDrainEnabled(false)
+        if (blocked === "empty")
+          for (const wallet of w.wallets)
+            await w.setState(wallet, State.MovingFunds)
+        const labels = ascending(w.wallets)
+          .slice(0, 2)
+          .map((x) => x.label)
+        const frame = async () => ({
+          // Only the explicit timeout timestamp may advance on reset.
+          wallet: (await w.bridge.wallets(pkh))
+            .slice()
+            .filter((_: unknown, i: number) => i !== 4)
+            .map(String),
+          other: other
+            ? (await w.bridge.wallets(other)).slice().map(String)
+            : [],
+          live: String(await w.bridge.liveWalletsCount()),
+          exposure: [
+            String(await w.exposure.custodyReserved()),
+            String(await w.exposure.issuanceReserved()),
+          ],
+          counters: await Promise.all(
+            w.wallets.map(async (x) =>
+              (await w.frost.frostMovementCounters(x.id)).slice().map(String)
+            )
+          ),
+        })
+        const before = await frame()
+        await expect(
+          w.bridge
+            .connect(w.operator)
+            .submitMovingFundsCommitment(pkh, main, members, 0, labels)
+        ).to.be.reverted
+        if (other)
+          await expect(
+            w.bridge
+              .connect(w.operator)
+              .submitMovingFundsCommitment(pkh, main, members, 0, [other])
+          ).to.be.revertedWith("Legacy targets disabled after cutover")
+        try {
+          await expect(
+            w.bridge.resetMovingFundsTimeout(pkh)
+          ).to.be.revertedWith("Moving funds timeout cannot be reset yet")
+        } catch (_) {
+          throw Error(
+            "control LegacyTimeoutRecovery assertion: incorrect reset eligibility"
+          )
+        }
+        for (let i = 0; i < 2; i++) {
+          await advance(6 * 86400)
+          const old = (await w.bridge.wallets(pkh)).movingFundsRequestedAt
+          try {
+            await expect(w.bridge.resetMovingFundsTimeout(pkh))
+              .to.emit(w.bridge, "MovingFundsTimeoutReset")
+              .withArgs(pkh)
+          } catch (_) {
+            throw Error(
+              "control LegacyTimeoutRecovery assertion: admissible timeout reset refused"
+            )
+          }
+          expect((await w.bridge.wallets(pkh)).movingFundsRequestedAt).to.be.gt(
+            old
+          )
+          await expect(w.bridge.notifyMovingFundsTimeout(pkh, members)).to.be
+            .reverted
+          expect(await frame()).to.deep.equal(before)
+        }
+        if (blocked === "contained")
+          await w.exposure.lift(ethers.utils.id("K09 reopen"))
+        if (blocked === "disabled") await w.frost.setFrostDrainEnabled(true)
+        if (blocked === "empty")
+          for (const wallet of w.wallets)
+            await w.setState(wallet, State.ReadyUnfunded)
+        if (other)
+          await expect(
+            w.bridge.resetMovingFundsTimeout(pkh)
+          ).to.be.revertedWith("Live wallets count must be zero")
+        await w.bridge
+          .connect(w.operator)
+          .submitMovingFundsCommitment(pkh, main, members, 0, labels)
+        expect(await w.frost.frostDrainTargets(pkh)).to.deep.equal(labels)
+        // A committed route never regains the reset permission.
+        await w.exposure.contain(
+          ethers.utils.id("K09 contained after commitment")
+        )
+        await advance(3601)
+        await expect(w.bridge.resetMovingFundsTimeout(pkh)).to.be.revertedWith(
+          "Target wallets commitment already submitted"
+        )
+        const targets = ascending(w.wallets).slice(0, 2)
+        const tx = transaction(
+          [[main.txHash, 0]],
+          targets.map((x, i) => ({
+            value: split(397000, 2)[i],
+            script: p2tr(x.q),
+          }))
+        )
+        await w.bridge.submitMovingFundsProof(
+          tx.tx,
+          inclusion(tx.hash),
+          main,
+          pkh
+        )
+        expect((await w.bridge.wallets(pkh)).mainUtxoHash).to.equal(ZERO)
+        expect((await w.bridge.wallets(pkh)).state).to.equal(
+          LegacyState.Closing
+        )
+      })
+    }
+  }
+
   it("drains a legacy wallet into FROST targets only behind the drain gate", async () => {
     const pkh = await legacyWallet()
     const main = await legacyMain(pkh, 400000)

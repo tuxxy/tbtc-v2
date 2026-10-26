@@ -65,6 +65,47 @@ library FrostMovement {
         uint32 period
     );
 
+    event MovingFundsTimeoutReset(bytes20 indexed walletPubKeyHash);
+
+    /// @notice Keep an existing uncommitted legacy obligation recoverable
+    /// when cutover has removed its legacy routes and new FROST routing is
+    /// unavailable. Existing commitments are never replaceable or resettable.
+    function resetLegacyTimeout(
+        BridgeState.Storage storage self,
+        bytes20 walletPubKeyHash
+    ) external {
+        Wallets.Wallet storage wallet = self.registeredWallets[
+            walletPubKeyHash
+        ];
+        require(
+            wallet.state == Wallets.WalletState.MovingFunds,
+            "Wallet must be in MovingFunds state"
+        );
+        require(
+            wallet.movingFundsTargetWalletsCommitmentHash == bytes32(0),
+            "Target wallets commitment already submitted"
+        );
+        bool noRoute = self.frostExposure.creationMode ==
+            FrostExposureState.FROST_ONLY &&
+            (!self.frostMovement.drainEnabled ||
+                self.frostMovement.eligibleTargets == 0 ||
+                FrostExposureState.controllerOf(self.frostExposure).contained());
+        require(
+            self.liveWalletsCount == 0 || noRoute,
+            "Live wallets count must be zero"
+        );
+        /* solhint-disable-next-line not-rely-on-time */
+        require(
+            block.timestamp >
+                wallet.movingFundsRequestedAt +
+                    self.movingFundsTimeoutResetDelay,
+            "Moving funds timeout cannot be reset yet"
+        );
+        /* solhint-disable-next-line not-rely-on-time */
+        wallet.movingFundsRequestedAt = uint32(block.timestamp);
+        emit MovingFundsTimeoutReset(walletPubKeyHash);
+    }
+
     /// @notice Commit the targets of a FROST wallet in MovingFunds. Any seat
     /// operator may submit. The commitment is accepted once per period.
     function commit(
