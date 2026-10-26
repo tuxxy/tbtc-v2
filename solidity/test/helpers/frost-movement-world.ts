@@ -152,11 +152,16 @@ export type Wallet = {
   value: number
 }
 
-export async function movementWorld(count = 4) {
+export async function movementWorld(
+  count = 4,
+  options: { keys?: string[]; relay?: string; factor?: number } = {}
+) {
   const signers = await ethers.getSigners()
   const [owner, depositor, treasury, operator] = signers
   const bank = await deploy("Bank")
-  const relay = await deploy("FrostDepositRegtestRelay")
+  const relay = options.relay
+    ? await ethers.getContractAt("IRelay", options.relay)
+    : await deploy("FrostDepositRegtestRelay")
   const implementation = await deploy("Bridge")
   const admin = await deploy("ProxyAdmin")
   const legacyRegistry = await deploy("FrostDrainRegistryFixture")
@@ -171,7 +176,7 @@ export async function movementWorld(count = 4) {
     treasury.address,
     legacyRegistry.address,
     pool.address,
-    1,
+    options.factor ?? 1,
   ])
   const proxy = await deploy("TransparentUpgradeableProxy", [
     implementation.address,
@@ -243,7 +248,7 @@ export async function movementWorld(count = 4) {
       ethers.utils.hexZeroPad(ethers.utils.hexlify(1000 + i), 32),
       true
     )
-    const q = `0x${pub.slice(4)}`
+    const q = options.keys?.[i] ?? `0x${pub.slice(4)}`
     const descriptor = {
       scheme: 2,
       profile: 1,
