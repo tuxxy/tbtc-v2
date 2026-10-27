@@ -776,6 +776,8 @@ describe("C-06 legacy routes: ECDSA to FROST drain and the stranded case", () =>
         if (blocked === "empty")
           for (const wallet of w.wallets)
             await w.setState(wallet, State.MovingFunds)
+        if (blocked === "partial-budget")
+          await expect(w.frost.resetLegacyMovingFundsTimeout(pkh, {...main, txOutputValue: main.txOutputValue - 1})).to.be.revertedWith("Invalid wallet main UTXO data")
         const labels = ascending(w.wallets)
           .slice(0, 2)
           .map((x) => x.label)
@@ -847,7 +849,8 @@ describe("C-06 legacy routes: ECDSA to FROST drain and the stranded case", () =>
             await w.setState(wallet, State.ReadyUnfunded)
         if (blocked === "budget" || blocked === "partial-budget")
           await w.exposure.openBudgetPeriod((await w.exposure.custodyReserved()).add(400000), await w.exposure.issuanceReserved(), ethers.utils.id("K09 replenished budget"))
-        await expect(reset()).to.be.revertedWith("FROST drain route available")
+        try { await expect(reset()).to.be.revertedWith("FROST drain route available") }
+        catch (_) { throw Error("control LegacyRouteAvailable assertion: reset accepted with a route") }
         await w.bridge
           .connect(w.operator)
           .submitMovingFundsCommitment(pkh, main, members, 0, labels)
@@ -880,6 +883,18 @@ describe("C-06 legacy routes: ECDSA to FROST drain and the stranded case", () =>
         )
       })
     }
+  }
+
+  for (const draining of [false,true]) {
+    it(`refuses indefinite reset with an admissible pre-cutover drain, draining=${draining}`, async()=>{
+      const pkh=await legacyWallet();const main=await legacyMain(pkh,400000);await legacyState(pkh,LegacyState.MovingFunds)
+      await w.frost.setFrostDrainEnabled(true)
+      if(draining) await w.frost.beginLegacyDkgDrain()
+      await advance(3601)
+      await expect(w.bridge.resetMovingFundsTimeout(pkh)).to.be.revertedWith("FROST drain route available")
+      await expect(w.frost.resetLegacyMovingFundsTimeout(pkh,main)).to.be.revertedWith("FROST drain route available")
+      await w.bridge.connect(w.operator).submitMovingFundsCommitment(pkh,main,members,0,ascending(w.wallets).slice(0,2).map(x=>x.label))
+    })
   }
 
   it("drains a legacy wallet into FROST targets only behind the drain gate", async () => {
