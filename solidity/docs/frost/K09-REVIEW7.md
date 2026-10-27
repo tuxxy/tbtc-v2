@@ -28,3 +28,13 @@ Docker, CI, Kani, broad campaign, merge or release. All-duty K09-6, residual K09
 and lifecycle criteria, authoritative V-05, models/replays and separately authorized
 K09b remain open. No new owner-approved fee constants or activation policy.
 Step 1 remains blocking pending independent disposition of the repairs.
+
+Compatibility limitation (K09-50): the original resetMovingFundsTimeout selector
+accepts no verified main preimage. Its conservative route check cannot distinguish
+partial positive capacity below the actual main balance, or an actual main below
+the drain dust threshold, in ANY creation mode. Upgraded hosts use the additive
+verified-main selector. MaintainerProxy still wraps only the original selector:
+reimbursed third-party resets cannot recover the pre-cutover zero-live-wallet
+partial-capacity or below-dust cases. Use upgraded native host recovery there.
+This preserves the required fleet-upgrade-before-drain activation condition.
+A timeout reset preserves custody but is not a below-dust settlement transition.

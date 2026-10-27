@@ -34,3 +34,11 @@ Evidence private directories0700/files0600. Never decode worker records. No Dock
 CI, Kani, full acceptance sweep, broad mutation campaign, merge or release. K09-6,
 combined reserve/pay/prove stale-main, residual lifecycle criteria, models/replays,
 V-05 and separately authorized K09b remain OPEN.
+
+Round-seven compatibility clarification (K09-50): the original selector is also
+conservative when the actual main balance is BELOW DUST, not only on partial
+positive capacity; this applies in every creation mode. MaintainerProxy wraps
+only that original selector, so reimbursed third-party resets cannot service the
+pre-cutover zero-live partial-capacity/below-dust cases. Upgraded native clients
+use the additive verified-main selector. Fleet upgrade precedes drain enablement.
+A timeout reset preserves custody; it does not perform the below-dust transition.
