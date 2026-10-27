@@ -753,16 +753,17 @@ describe("C-06 legacy routes: ECDSA to FROST drain and the stranded case", () =>
     snapshot = await network.provider.send("evm_snapshot")
   })
 
+  for (const mode of [0, 1, 2]) {
   for (const blocked of ["contained", "disabled", "empty", "budget", "partial-budget"] as const) {
-    for (const live of [false, true]) {
-      it(`keeps an uncommitted post-cutover legacy obligation resettable: ${blocked}, live=${live}`, async () => {
+    for (const live of mode === 2 ? [false, true] : [false]) {
+      it(`keeps an uncommitted legacy obligation resettable: mode=${mode}, ${blocked}, live=${live}`, async () => {
         const pkh = await legacyWallet()
         const main = await legacyMain(pkh, 400000)
         await legacyState(pkh, LegacyState.MovingFunds)
         const other = live ? await legacyWallet() : undefined
         await w.frost.setFrostDrainEnabled(true)
-        await w.frost.beginLegacyDkgDrain()
-        await w.frost.completeFrostCutover(
+        if (mode >= 1) await w.frost.beginLegacyDkgDrain()
+        if (mode === 2) await w.frost.completeFrostCutover(
           ethers.utils.id("K09 uncommitted moving obligation")
         )
         if (blocked === "contained")
@@ -806,7 +807,7 @@ describe("C-06 legacy routes: ECDSA to FROST drain and the stranded case", () =>
           w.bridge
             .connect(w.operator)
             .submitMovingFundsCommitment(pkh, main, members, 0, labels)
-        ).to.be.reverted
+        ).to.be.revertedWith({contained: "FROST exposure contained", disabled: "FROST drain disabled", empty: "No target wallets available", budget: "FROST custody budget", "partial-budget": "FROST custody budget"}[blocked])
         if (other)
           await expect(
             w.bridge
@@ -838,7 +839,7 @@ describe("C-06 legacy routes: ECDSA to FROST drain and the stranded case", () =>
             old
           )
           await expect(w.bridge.notifyMovingFundsTimeout(pkh, members)).to.be
-            .reverted
+            .revertedWith("Moving funds has not timed out yet")
           expect(await frame()).to.deep.equal(before)
         }
         if (blocked === "contained")
@@ -883,6 +884,29 @@ describe("C-06 legacy routes: ECDSA to FROST drain and the stranded case", () =>
         )
       })
     }
+  }
+
+  }
+
+  for (const mode of [0, 1, 2]) {
+    it(`preserves below-dust recovery without proposing a drain: mode=${mode}`, async () => {
+      const pkh = await legacyWallet()
+      const parameters = await w.bridge.movingFundsParameters()
+      const main = await legacyMain(pkh, parameters.movingFundsDustThreshold.toNumber() - 1)
+      await legacyState(pkh, LegacyState.MovingFunds)
+      await w.frost.setFrostDrainEnabled(true)
+      if (mode >= 1) await w.frost.beginLegacyDkgDrain()
+      if (mode === 2) await w.frost.completeFrostCutover(ethers.utils.id("below dust recovery"))
+      const labels = ascending(w.wallets).slice(0, 1).map(x => x.label)
+      await expect(w.bridge.connect(w.operator).submitMovingFundsCommitment(pkh, main, members, 0, labels)).to.be.revertedWith("FROST drain below dust")
+      for (let i = 0; i < 2; i++) {
+        await advance(6 * 86400)
+        await expect(w.frost.resetLegacyMovingFundsTimeout(pkh, main)).to.emit(w.bridge, "MovingFundsTimeoutReset").withArgs(pkh)
+        await expect(w.bridge.notifyMovingFundsTimeout(pkh, members)).to.be.revertedWith("Moving funds has not timed out yet")
+        expect((await w.bridge.wallets(pkh)).mainUtxoHash).not.to.equal(ZERO)
+        expect((await w.bridge.wallets(pkh)).state).to.equal(LegacyState.MovingFunds)
+      }
+    })
   }
 
   for (const draining of [false,true]) {
