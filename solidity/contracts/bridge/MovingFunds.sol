@@ -23,6 +23,7 @@ import "./BridgeState.sol";
 import "./Redemption.sol";
 import "./Wallets.sol";
 import "../frost/FrostMovement.sol";
+import "../frost/FrostLegacyRecovery.sol";
 
 /// @title Moving Bridge wallet funds
 /// @notice The library handles the logic for moving Bitcoin between Bridge
@@ -286,7 +287,7 @@ library MovingFunds {
         BridgeState.Storage storage self,
         bytes20 walletPubKeyHash
     ) external {
-        FrostMovement.resetLegacyTimeout(self, walletPubKeyHash);
+        FrostLegacyRecovery.reset(self, walletPubKeyHash);
     }
 
     /// @notice Used by the wallet to prove the BTC moving funds transaction

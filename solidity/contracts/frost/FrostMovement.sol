@@ -11,7 +11,6 @@ import "./FrostMovementState.sol";
 import {BTCUtils} from "@keep-network/bitcoin-spv-sol/contracts/BTCUtils.sol";
 import {BytesLib} from "@keep-network/bitcoin-spv-sol/contracts/BytesLib.sol";
 import "./FrostExposureState.sol";
-import "./FrostLegacyRecovery.sol";
 
 /// @notice C-06 FROST fund movement and receiving sweeps.
 /// A commitment binds ordered target labels and their immutable descriptors.
@@ -67,16 +66,6 @@ library FrostMovement {
     );
 
     event MovingFundsTimeoutReset(bytes20 indexed walletPubKeyHash);
-
-    /// @notice Keep an existing uncommitted legacy obligation recoverable
-    /// when cutover has removed its legacy routes and new FROST routing is
-    /// unavailable. Existing commitments are never replaceable or resettable.
-    function resetLegacyTimeout(
-        BridgeState.Storage storage self,
-        bytes20 walletPubKeyHash
-    ) external {
-        FrostLegacyRecovery.reset(self, walletPubKeyHash);
-    }
 
     /// @notice Commit the targets of a FROST wallet in MovingFunds. Any seat
     /// operator may submit. The commitment is accepted once per period.

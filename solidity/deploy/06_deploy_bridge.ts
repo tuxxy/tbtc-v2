@@ -54,10 +54,7 @@ const func: DeployFunction = async function deployBridge(
     },
   })
   const FrostLegacyRecovery = await deploy("FrostLegacyRecovery", deployOptions)
-  const FrostMovement = await deploy("FrostMovement", {
-    ...deployOptions,
-    libraries: { FrostLegacyRecovery: FrostLegacyRecovery.address },
-  })
+  const FrostMovement = await deploy("FrostMovement", deployOptions)
   const FrostFraud = await deploy("FrostFraud", deployOptions)
   const FrostLifecycle = await deploy("FrostLifecycle", deployOptions)
   const FrostExposure = await deploy("FrostExposure", deployOptions)
@@ -104,7 +101,7 @@ const func: DeployFunction = async function deployBridge(
   // C-10: legacy main replacements release a committed FROST drain.
   const MovingFunds = await deploy("MovingFunds", {
     ...deployOptions,
-    libraries: { FrostMovement: FrostMovement.address },
+    libraries: { FrostMovement: FrostMovement.address, FrostLegacyRecovery: FrostLegacyRecovery.address },
   })
 
   const [bridge, proxyDeployment] = await helpers.upgrades.deployProxy(
