@@ -6,6 +6,7 @@ import "./IFrostMovementBridge.sol";
 import "./FrostMovement.sol";
 import "./FrostFraudDispatch.sol";
 import "./FrostExposureState.sol";
+import "./FrostLegacyRecovery.sol";
 
 interface IFrostMovementGovernance {
     function governance() external view returns (address);
@@ -22,7 +23,10 @@ library FrostMovementDispatch {
     {
         bytes4 selector = bytes4(input[:4]);
         bytes calldata args = input[4:];
-        if (
+        if (selector == IFrostMovementBridge.resetLegacyMovingFundsTimeout.selector) {
+            (bytes20 source, BitcoinTx.UTXO memory main) = abi.decode(args, (bytes20, BitcoinTx.UTXO));
+            FrostLegacyRecovery.resetWithMain(self, source, main);
+        } else if (
             selector ==
             IFrostMovementBridge.submitFrostMovingFundsCommitment.selector
         ) {

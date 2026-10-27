@@ -6,6 +6,8 @@ import "./FrostMovementState.sol";
 
 /// @notice C-06 movement entrypoints of the Bridge's FROST extension.
 interface IFrostMovementBridge {
+    function resetLegacyMovingFundsTimeout(bytes20 source, BitcoinTx.UTXO calldata main) external;
+
     event FrostMovingFundsCommitted(
         bytes32 indexed walletId,
         uint32 period,

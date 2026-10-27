@@ -3,6 +3,8 @@ pragma solidity 0.8.17;
 
 /// @notice The C-10 exposure controller as the Bridge calls it.
 interface IFrostExposureController {
+    function remainingCustody() external view returns (uint64);
+
     function bridge() external view returns (address);
 
     function contained() external view returns (bool);

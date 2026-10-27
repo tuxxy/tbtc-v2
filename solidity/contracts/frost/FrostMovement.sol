@@ -11,6 +11,7 @@ import "./FrostMovementState.sol";
 import {BTCUtils} from "@keep-network/bitcoin-spv-sol/contracts/BTCUtils.sol";
 import {BytesLib} from "@keep-network/bitcoin-spv-sol/contracts/BytesLib.sol";
 import "./FrostExposureState.sol";
+import "./FrostLegacyRecovery.sol";
 
 /// @notice C-06 FROST fund movement and receiving sweeps.
 /// A commitment binds ordered target labels and their immutable descriptors.
@@ -74,36 +75,7 @@ library FrostMovement {
         BridgeState.Storage storage self,
         bytes20 walletPubKeyHash
     ) external {
-        Wallets.Wallet storage wallet = self.registeredWallets[
-            walletPubKeyHash
-        ];
-        require(
-            wallet.state == Wallets.WalletState.MovingFunds,
-            "Wallet must be in MovingFunds state"
-        );
-        require(
-            wallet.movingFundsTargetWalletsCommitmentHash == bytes32(0),
-            "Target wallets commitment already submitted"
-        );
-        bool noRoute = self.frostExposure.creationMode ==
-            FrostExposureState.FROST_ONLY &&
-            (!self.frostMovement.drainEnabled ||
-                self.frostMovement.eligibleTargets == 0 ||
-                FrostExposureState.controllerOf(self.frostExposure).contained());
-        require(
-            self.liveWalletsCount == 0 || noRoute,
-            "Live wallets count must be zero"
-        );
-        /* solhint-disable-next-line not-rely-on-time */
-        require(
-            block.timestamp >
-                wallet.movingFundsRequestedAt +
-                    self.movingFundsTimeoutResetDelay,
-            "Moving funds timeout cannot be reset yet"
-        );
-        /* solhint-disable-next-line not-rely-on-time */
-        wallet.movingFundsRequestedAt = uint32(block.timestamp);
-        emit MovingFundsTimeoutReset(walletPubKeyHash);
+        FrostLegacyRecovery.reset(self, walletPubKeyHash);
     }
 
     /// @notice Commit the targets of a FROST wallet in MovingFunds. Any seat

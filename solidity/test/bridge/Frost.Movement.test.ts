@@ -753,7 +753,7 @@ describe("C-06 legacy routes: ECDSA to FROST drain and the stranded case", () =>
     snapshot = await network.provider.send("evm_snapshot")
   })
 
-  for (const blocked of ["contained", "disabled", "empty"] as const) {
+  for (const blocked of ["contained", "disabled", "empty", "budget", "partial-budget"] as const) {
     for (const live of [false, true]) {
       it(`keeps an uncommitted post-cutover legacy obligation resettable: ${blocked}, live=${live}`, async () => {
         const pkh = await legacyWallet()
@@ -768,6 +768,11 @@ describe("C-06 legacy routes: ECDSA to FROST drain and the stranded case", () =>
         if (blocked === "contained")
           await w.exposure.contain(ethers.utils.id("K09 emergency"))
         if (blocked === "disabled") await w.frost.setFrostDrainEnabled(false)
+        if (blocked === "budget" || blocked === "partial-budget") {
+          const reserved = await w.exposure.custodyReserved()
+          await w.exposure.openBudgetPeriod(reserved.add(blocked === "partial-budget" ? 399999 : 0), await w.exposure.issuanceReserved(), ethers.utils.id("K09 exhausted budget"))
+        }
+        const reset = () => blocked === "partial-budget" ? w.frost.resetLegacyMovingFundsTimeout(pkh, main) : w.bridge.resetMovingFundsTimeout(pkh)
         if (blocked === "empty")
           for (const wallet of w.wallets)
             await w.setState(wallet, State.MovingFunds)
@@ -808,7 +813,7 @@ describe("C-06 legacy routes: ECDSA to FROST drain and the stranded case", () =>
           ).to.be.revertedWith("Legacy targets disabled after cutover")
         try {
           await expect(
-            w.bridge.resetMovingFundsTimeout(pkh)
+            reset()
           ).to.be.revertedWith("Moving funds timeout cannot be reset yet")
         } catch (_) {
           throw Error(
@@ -819,7 +824,7 @@ describe("C-06 legacy routes: ECDSA to FROST drain and the stranded case", () =>
           await advance(6 * 86400)
           const old = (await w.bridge.wallets(pkh)).movingFundsRequestedAt
           try {
-            await expect(w.bridge.resetMovingFundsTimeout(pkh))
+            await expect(reset())
               .to.emit(w.bridge, "MovingFundsTimeoutReset")
               .withArgs(pkh)
           } catch (_) {
@@ -840,10 +845,9 @@ describe("C-06 legacy routes: ECDSA to FROST drain and the stranded case", () =>
         if (blocked === "empty")
           for (const wallet of w.wallets)
             await w.setState(wallet, State.ReadyUnfunded)
-        if (other)
-          await expect(
-            w.bridge.resetMovingFundsTimeout(pkh)
-          ).to.be.revertedWith("Live wallets count must be zero")
+        if (blocked === "budget" || blocked === "partial-budget")
+          await w.exposure.openBudgetPeriod((await w.exposure.custodyReserved()).add(400000), await w.exposure.issuanceReserved(), ethers.utils.id("K09 replenished budget"))
+        await expect(reset()).to.be.revertedWith("FROST drain route available")
         await w.bridge
           .connect(w.operator)
           .submitMovingFundsCommitment(pkh, main, members, 0, labels)
@@ -853,7 +857,7 @@ describe("C-06 legacy routes: ECDSA to FROST drain and the stranded case", () =>
           ethers.utils.id("K09 contained after commitment")
         )
         await advance(3601)
-        await expect(w.bridge.resetMovingFundsTimeout(pkh)).to.be.revertedWith(
+        await expect(reset()).to.be.revertedWith(
           "Target wallets commitment already submitted"
         )
         const targets = ascending(w.wallets).slice(0, 2)
