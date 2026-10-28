@@ -20,6 +20,7 @@ import {BTCUtils} from "@keep-network/bitcoin-spv-sol/contracts/BTCUtils.sol";
 import "./BitcoinTx.sol";
 import "./BridgeState.sol";
 import "./Wallets.sol";
+import "../frost/FrostMovement.sol";
 
 import "../bank/Bank.sol";
 
@@ -225,6 +226,8 @@ library DepositSweep {
             totalTreasuryFee += inputsInfo.treasuryFees[i];
         }
 
+        // C-10: release a FROST drain committed against the replaced main.
+        FrostMovement.releaseDrainForMainChange(self, walletPubKeyHash);
         // Record this sweep data and assign them to the wallet public key hash
         // as new main UTXO. Transaction output index is always 0 as sweep
         // transaction always contains only one output.

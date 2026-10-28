@@ -56,11 +56,13 @@ const func: DeployFunction = async function deployBridge(
   const FrostMovement = await deploy("FrostMovement", deployOptions)
   const FrostFraud = await deploy("FrostFraud", deployOptions)
   const FrostLifecycle = await deploy("FrostLifecycle", deployOptions)
+  const FrostExposure = await deploy("FrostExposure", deployOptions)
   const FrostFraudDispatch = await deploy("FrostFraudDispatch", {
     ...deployOptions,
     libraries: {
       FrostFraud: FrostFraud.address,
       FrostLifecycle: FrostLifecycle.address,
+      FrostExposure: FrostExposure.address,
     },
   })
   const FrostMovementDispatch = await deploy("FrostMovementDispatch", {
@@ -83,14 +85,22 @@ const func: DeployFunction = async function deployBridge(
     },
   })
   const Deposit = await deploy("Deposit", deployOptions)
-  const DepositSweep = await deploy("DepositSweep", deployOptions)
+  // C-10: legacy main replacements release a committed FROST drain.
+  const DepositSweep = await deploy("DepositSweep", {
+    ...deployOptions,
+    libraries: { FrostMovement: FrostMovement.address },
+  })
   const Redemption = await deploy("Redemption", deployOptions)
   const Wallets = await deploy("Wallets", {
     contract: "contracts/bridge/Wallets.sol:Wallets",
     ...deployOptions,
   })
   const Fraud = await deploy("Fraud", deployOptions)
-  const MovingFunds = await deploy("MovingFunds", deployOptions)
+  // C-10: legacy main replacements release a committed FROST drain.
+  const MovingFunds = await deploy("MovingFunds", {
+    ...deployOptions,
+    libraries: { FrostMovement: FrostMovement.address },
+  })
 
   const [bridge, proxyDeployment] = await helpers.upgrades.deployProxy(
     "Bridge",
@@ -137,6 +147,7 @@ const func: DeployFunction = async function deployBridge(
     await helpers.etherscan.verify(FrostCancellationAdmissions)
     await helpers.etherscan.verify(FrostRedemptionSettlement)
     await helpers.etherscan.verify(FrostLifecycle)
+    await helpers.etherscan.verify(FrostExposure)
     await helpers.etherscan.verify(FrostFraud)
     await helpers.etherscan.verify(FrostFraudDispatch)
     await helpers.etherscan.verify(FrostMovement)

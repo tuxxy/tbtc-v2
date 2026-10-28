@@ -411,6 +411,49 @@ describe("FROST immutable identity and inactive Bridge", () => {
         shape(before, old.type),
       ])
     }
+    // The FROST members are new against the baseline, so the loop above
+    // cannot see a size-preserving reorder among them. Pin them as built
+    // (C-10, adversarial review of #14); a later milestone that changes them
+    // changes this table on purpose.
+    const member = (label: string) =>
+      newSelf.members.find((x: any) => x.label === label)
+    expect(
+      [
+        "frost",
+        "frostCustody",
+        "frostFunding",
+        "frostRedemptions",
+        "frostMovement",
+        "frostFraud",
+        "frostExposure",
+        "__gap",
+      ].map((label) => {
+        const m = member(label)
+        return [label, m.slot, m.offset, after.types[m.type].numberOfBytes]
+      })
+    ).to.deep.equal([
+      ["frost", "30", 0, "128"],
+      ["frostCustody", "34", 0, "64"],
+      ["frostFunding", "36", 0, "256"],
+      ["frostRedemptions", "44", 0, "384"],
+      ["frostMovement", "56", 0, "256"],
+      ["frostFraud", "64", 0, "96"],
+      ["frostExposure", "67", 0, "64"],
+      ["__gap", "69", 0, "288"],
+    ])
+    expect(
+      after.types[member("frostExposure").type].members.map((m: any) => [
+        m.label,
+        m.slot,
+        m.offset,
+      ])
+    ).to.deep.equal([
+      ["controller", "0", 0],
+      ["creationMode", "0", 20],
+      ["legacyDkgInFlight", "0", 21],
+      ["depositReservationMargin", "0", 22],
+      ["cutoverManifest", "1", 0],
+    ])
     const { bridge, proxyAdmin, admin } = await fixture(output)
     const legacy = ethers.utils.ripemd160(
       ethers.utils.sha256(`0x02${Q.slice(2)}`)

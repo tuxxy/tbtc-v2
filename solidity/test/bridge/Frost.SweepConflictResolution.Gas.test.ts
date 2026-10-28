@@ -194,6 +194,17 @@ describe("C-04 joint maximum sweep resolution gas (synthetic SPV component)", fu
       ethers.utils.id("UNQUALIFIED joint max gas component"),
       genesis
     )
+    // C-10: the exposure controller with test ceilings (D-10 values OPEN).
+    const exposure = await deploy("FrostExposureController", [
+      proxy.address,
+      (await ethers.getSigners())[0].address,
+    ])
+    await exposure.openBudgetPeriod(
+      ethers.BigNumber.from(2).pow(64).sub(1),
+      ethers.BigNumber.from(2).pow(64).sub(1),
+      ethers.utils.id("C-10 test budget; D-10 OPEN")
+    )
+    await frost.installFrostExposureController(exposure.address)
     await frost.setFrostFundingGates(true, true)
     await frost.configureFrostRedemptions(
       genesis,
@@ -266,6 +277,15 @@ describe("C-04 joint maximum sweep resolution gas (synthetic SPV component)", fu
       await frost
         .connect(await ethers.getSigner(recipient))
         .revealFrostDeposit(terms, tx, 0, { gasLimit: 2000000 })
+      // C-10: the host signs only reserved deposits, so the joint maximum
+      // is measured with every deposit reserved (UNRESERVED=1 for the old
+      // C-05 shape, where each is charged at its proof).
+      if (!process.env.UNRESERVED)
+        await frost.reserveFrostDeposit(
+          outpoint(txHash(tx)),
+          tx,
+          syntheticProof(tx)
+        )
       return txHash(tx)
     }
     const initialDeposit = await reveal(0, owner.address, 1000000)
@@ -585,6 +605,15 @@ describe("C-04 joint maximum sweep resolution gas (synthetic SPV component)", fu
       escrow: await frost.frostRedemptionEscrow(ID),
       held: await bank.balanceOf(bridge.address),
     }
+    if (process.env.A3_ESTIMATE)
+      console.log(
+        "A3_ESTIMATE",
+        (
+          await frost.estimateGas.submitFrostSweepResolutionProof(resolution, {
+            gasLimit: 30000000,
+          })
+        ).toString()
+      )
     let receipt: any
     let failure: string | null = null
     try {

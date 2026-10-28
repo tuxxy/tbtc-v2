@@ -10,6 +10,7 @@ import "./FrostCancellationHistory.sol";
 import "./FrostMovement.sol";
 import {BTCUtils} from "@keep-network/bitcoin-spv-sol/contracts/BTCUtils.sol";
 import {BytesLib} from "@keep-network/bitcoin-spv-sol/contracts/BytesLib.sol";
+import "./FrostExposureState.sol";
 
 /// @notice Proof-backed C-05 accounting. New-reveal/address gates deliberately
 /// do not gate completion of already funded deposit obligations.
@@ -23,7 +24,6 @@ library FrostDepositSweep {
         uint256[] amounts;
         bytes32[] deposits;
         uint256 inputsValue;
-        uint256 treasuryFee;
         uint256 count;
         bool mainFound;
         uint256 processed;
@@ -222,7 +222,6 @@ library FrostDepositSweep {
                 uint256(deposit.terms.amount) -
                 deposit.treasuryFee -
                 charged;
-            accounting.treasuryFee += deposit.treasuryFee;
         }
         creditSweep(bridge, request, txHash, value, resolutionId);
         if (wallet.state == FrostWallets.State.ReadyUnfunded)
@@ -231,6 +230,47 @@ library FrostDepositSweep {
         else FrostMovement.reopen(bridge, request.walletId);
         // Effects precede Bank/Vault callbacks; any late failure rolls back all
         // deposit tombstones, pending counters, custody and Bank credits.
+        creditBank(bridge, request, accounting);
+        bridge.frostFraud.provenTransactions[txHash] = request.walletId;
+        funding.entered = false;
+        emit FrostDepositsSwept(request.walletId, txHash, value);
+    }
+
+    /// @dev C-10: the single FROST Bank credit statement. It reports to the
+    /// exposure controller exactly what it then credits: the depositor
+    /// amounts and the treasury fees, whose sum is the treasury credit, with
+    /// the value admitted and the reserved part of it. No other value reaches
+    /// the Bank, so a fault in the validation above yields only credits the
+    /// controller has counted, and beyond the budget the whole proof reverts.
+    function creditBank(
+        BridgeState.Storage storage bridge,
+        Sweep calldata request,
+        Accounting memory accounting
+    ) private {
+        uint256 reserved;
+        uint256 custody;
+        uint256 credited;
+        uint256 treasury;
+        for (uint256 i = 0; i < accounting.count; i++) {
+            FrostFundingState.Deposit storage deposit = bridge
+                .frostFunding
+                .deposits[accounting.deposits[i]];
+            if (deposit.reservedAt != 0) reserved += deposit.terms.amount;
+            custody += deposit.terms.amount;
+            credited += accounting.amounts[i];
+            treasury += deposit.treasuryFee;
+        }
+        credited += treasury;
+        require(
+            custody <= type(uint64).max && credited <= type(uint64).max,
+            "FROST credit width"
+        );
+        FrostExposureState.controllerOf(bridge.frostExposure).completeDeposits(
+            accounting.count,
+            uint64(reserved),
+            uint64(custody),
+            uint64(credited)
+        );
         if (
             request.vault != address(0) && bridge.isVaultTrusted[request.vault]
         ) {
@@ -245,14 +285,8 @@ library FrostDepositSweep {
                 accounting.amounts
             );
         }
-        if (accounting.treasuryFee != 0)
-            bridge.bank.increaseBalance(
-                bridge.treasury,
-                accounting.treasuryFee
-            );
-        bridge.frostFraud.provenTransactions[txHash] = request.walletId;
-        funding.entered = false;
-        emit FrostDepositsSwept(request.walletId, txHash, value);
+        if (treasury != 0)
+            bridge.bank.increaseBalance(bridge.treasury, treasury);
     }
 
     function creditSweep(
