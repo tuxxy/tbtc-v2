@@ -327,20 +327,31 @@ describe("FROST immutable identity and inactive Bridge", () => {
     const info: any = await artifacts.getBuildInfo(
       "contracts/bridge/Bridge.sol:Bridge"
     )
+    // Compile only Bridge's baseline import closure. Every project file comes
+    // from the baseline commit and package files keep their built content, so
+    // solc never falls back to reading the current tree from disk.
     const input = JSON.parse(JSON.stringify(info.input))
-    for (const name of ["Bridge.sol", "BridgeState.sol", "Wallets.sol"]) {
-      input.sources[`contracts/bridge/${name}`].content = execFileSync(
-        "git",
-        ["show", `${BASE}:solidity/contracts/bridge/${name}`],
-        { cwd: path.resolve(__dirname, "../../.."), encoding: "utf8" }
-      )
-    }
-    for (const key of Object.keys(input.sources)) {
-      if (
-        key.startsWith("contracts/frost/") ||
-        key === "contracts/test/FrostRegistryFixture.sol"
-      )
-        delete input.sources[key]
+    input.sources = {}
+    const pending = ["contracts/bridge/Bridge.sol"]
+    while (pending.length > 0) {
+      const key = pending.pop()!
+      if (!input.sources[key]) {
+        const content = key.startsWith("contracts/")
+          ? execFileSync("git", ["show", `${BASE}:solidity/${key}`], {
+              cwd: path.resolve(__dirname, "../../.."),
+              encoding: "utf8",
+            })
+          : info.input.sources[key].content
+        input.sources[key] = { content }
+        for (const [, spec] of content.matchAll(
+          /import\s+(?:[^"';]*\s+from\s+)?["']([^"']+)["']/g
+        ))
+          pending.push(
+            spec.startsWith(".")
+              ? path.posix.join(path.posix.dirname(key), spec)
+              : spec
+          )
+      }
     }
     const compiler = await run("compile:solidity:solc:get-build", {
       quiet: true,
@@ -357,6 +368,9 @@ describe("FROST immutable identity and inactive Bridge", () => {
     expect(
       (output.errors || []).filter((e: any) => e.severity === "error")
     ).to.deep.equal([])
+    expect(Object.keys(output.sources).sort()).to.deep.equal(
+      Object.keys(input.sources).sort()
+    )
     const before =
       output.contracts["contracts/bridge/Bridge.sol"].Bridge.storageLayout
     const after =
