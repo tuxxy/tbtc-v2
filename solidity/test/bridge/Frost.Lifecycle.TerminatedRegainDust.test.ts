@@ -132,7 +132,26 @@ describe("C-09 terminated wallet regains dust-sized custody (tuxxy/tbtc-v2#25)",
       includeMain: false,
       vault: ethers.constants.AddressZero,
     })
-    expect((await w.frost.frostWalletCustody(x.id)).value).to.equal(regained)
+    // Recording dust retains it: no Bitcoin spend was proven, so the
+    // regained value, its outpoint and that output's record must survive the
+    // dust notification and closure unchanged.
+    const retained = async (step: string) => {
+      const custody = await w.frost.frostWalletCustody(x.id)
+      expect(
+        custody.value,
+        `terminated wallet: the retained dust custody value changed ${step}`
+      ).to.equal(regained)
+      expect(
+        custody.mainOutpoint,
+        `terminated wallet: the retained dust outpoint changed ${step}`
+      ).to.equal(sweep.key(0))
+      const output = await w.frost.frostCustodyOutput(sweep.key(0))
+      expect(
+        [output.walletId, output.value.toNumber(), output.spent],
+        `terminated wallet: the retained dust output record changed ${step}`
+      ).to.deep.equal([x.id, regained, false])
+    }
+    await retained("after the late sweep")
     await sanctionKept("after the late sweep")
 
     // Below dust it cannot be moved, so it must be recordable as dust.
@@ -144,6 +163,7 @@ describe("C-09 terminated wallet regains dust-sized custody (tuxxy/tbtc-v2#25)",
       (await w.frost.frostWalletLifecycle(x.id)).dust,
       "terminated wallet: the regained custody was not recorded as dust"
     ).to.equal(true)
+    await retained("after the dust notification")
     await sanctionKept("after the dust notification")
 
     // Closure runs from the original termination.
@@ -164,5 +184,6 @@ describe("C-09 terminated wallet regains dust-sized custody (tuxxy/tbtc-v2#25)",
       (await w.frost.frostWalletLifecycle(x.id)).terminatedAt,
       "terminated wallet: the original terminatedAt changed through final closure"
     ).to.equal(terminatedAt)
+    await retained("through final closure")
   })
 })
