@@ -1,0 +1,26 @@
+diff --git a/solidity/contracts/frost/FrostMovement.sol b/solidity/contracts/frost/FrostMovement.sol
+index 64fff405..12faafd3 100644
+--- a/solidity/contracts/frost/FrostMovement.sol
++++ b/solidity/contracts/frost/FrostMovement.sol
+@@ -775,16 +775,17 @@ library FrostMovement {
+         FrostMovementState.Lifecycle storage lifecycle = self
+             .frostMovement
+             .lifecycles[walletId];
++        // CONTROL wrong: treat a terminated wallet as closed and reopen it
++        // into MovingFunds, dropping its terminated state.
+         bool closed = wallet.state == FrostWallets.State.Closing ||
+-            wallet.state == FrostWallets.State.Closed;
++            wallet.state == FrostWallets.State.Closed ||
++            wallet.state == FrostWallets.State.Terminated;
+         if (!closed && !lifecycle.dust) return;
+         lifecycle.period += 1;
+         lifecycle.dust = false;
+         if (!closed) return;
+         // A terminated wallet keeps its terminated state when it reopens.
+-        wallet.state = lifecycle.terminatedAt != 0
+-            ? FrostWallets.State.Terminated
+-            : FrostWallets.State.MovingFunds;
++        wallet.state = FrostWallets.State.MovingFunds;
+         /* solhint-disable-next-line not-rely-on-time */
+         lifecycle.movingFundsRequestedAt = uint64(block.timestamp);
+         lifecycle.closingStartedAt = 0;

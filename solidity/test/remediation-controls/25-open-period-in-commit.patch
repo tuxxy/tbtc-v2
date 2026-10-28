@@ -1,0 +1,38 @@
+--- a/solidity/contracts/frost/FrostMovement.sol
++++ b/solidity/contracts/frost/FrostMovement.sol
+@@ -89,6 +89,11 @@
+             "FROST movement operator"
+         );
+         FrostMovementState.Storage storage movement = self.frostMovement;
++        // WRONG-FIX W-h: open the fresh period lazily at commit time.
++        if (
++            source.state == FrostWallets.State.Terminated &&
++            FrostMovementState.current(movement, walletId).provenAt != 0
++        ) movement.lifecycles[walletId].period += 1;
+         FrostMovementState.Commitment storage commitment = FrostMovementState
+             .current(movement, walletId);
+         require(
+@@ -763,8 +768,7 @@
+     }
+ 
+     /// @dev New custody was credited (a late incoming or deposit sweep). A
+-    /// Closing or Closed wallet returns to MovingFunds in a new period, a
+-    /// Terminated wallet whose movement was proven starts a new period, and
++    /// Closing or Closed wallet returns to MovingFunds in a new period, and
+     /// recorded dust is cleared in any state, so the credited value can move
+     /// again. Closing deleted nothing.
+     function reopen(BridgeState.Storage storage self, bytes32 walletId)
+@@ -778,12 +782,7 @@
+             .lifecycles[walletId];
+         bool closed = wallet.state == FrostWallets.State.Closing ||
+             wallet.state == FrostWallets.State.Closed;
+-        // A terminated wallet stays Terminated when its movement is proven,
+-        // so custody it regains afterwards also needs a fresh period.
+-        bool moved = wallet.state == FrostWallets.State.Terminated &&
+-            FrostMovementState.current(self.frostMovement, walletId).provenAt !=
+-            0;
+-        if (!closed && !moved && !lifecycle.dust) return;
++        if (!closed && !lifecycle.dust) return;
+         lifecycle.period += 1;
+         lifecycle.dust = false;
+         if (!closed) return;
