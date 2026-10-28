@@ -291,6 +291,9 @@ library FrostMovement {
         /* solhint-disable-next-line not-rely-on-time */
         incoming.createdAt = uint64(block.timestamp);
         incoming.state = FrostMovementState.IncomingState.Pending;
+        // Fixed here so a later parameter change cannot revoke the
+        // self-transfer defense of an incoming sweep signed under it (K-08).
+        incoming.sweepFeeCap = self.movedFundsSweepTxMaxTotalFee;
         self.frostMovement.pendingIncoming[targetId]++;
         emit FrostIncomingRecorded(
             key,

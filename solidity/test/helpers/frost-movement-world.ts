@@ -23,7 +23,7 @@ export const State = {
 }
 export const Incoming = { Unknown: 0, Pending: 1, Escalated: 2, Swept: 3 }
 
-const TYPE =
+export const TYPE =
   "tuple(uint8 scheme,uint8 profile,uint256 chainId,address registry,uint64 epoch,uint32[] members,address[] operators,uint16 threshold,bytes32 snowfallDescriptor,bytes32 outputKey)"
 const sha = (value: Buffer) => createHash("sha256").update(value).digest()
 const sha256d = (value: Buffer) => sha(sha(value))

@@ -64,10 +64,30 @@ yields a second challenge, bond or timeout. One challenge per key.
 | Proven | `provenTransactions[txHash] == walletId`, written by deposit sweep (including resolution), movement and incoming sweep proofs |
 | Intent | an admitted C-04 intent for this wallet names the hash as its payment, its cancellation, a retained cancellation alternative, or its sweep resolution; it need not have mined (losing replacements included) |
 | Movement | the C-06 commitment for the given period, retired or not: one input (the committed main), outputs to the committed targets in order with the equal split and the fee cap stored with the commitment, mined or not |
+| Self (K-08) | a transfer from the wallet to itself, mined or not: every input is a key-path output of Q or a revealed deposit of this wallet (prevout script its deposit output key), exactly one output paying Q, and a fee within the sum of the deposit inputs' `maximumSweepFee` plus the largest `sweepFeeCap` among the key-path inputs recorded as incoming outputs of this wallet |
 
 A different legitimate spend of the same input never defeats an unauthorized
 digest, because the digest itself must be rebuilt from the authorized
 transaction.
+
+**Self-transfer (K-08, D-05 test value, OPEN).** A deposit sweep or incoming
+sweep that was signed but never mined is defended as a self-transfer. Such a
+transaction moves value only from the wallet to itself under the sweep fee
+policy, so it is not fraud. `SIGHASH_DEFAULT` commits to every prevout amount
+and script, so the prevouts in the defense are the ones the wallet signed.
+The fee cap has two parts, each fixed when its input was recorded:
+
+- each deposit input brings the `maximumSweepFee` fixed at its reveal;
+- the key-path inputs that are incoming outputs recorded for this wallet
+  bring the largest of their `sweepFeeCap` values, the
+  `movedFundsSweepTxMaxTotalFee` in force at their movement proof.
+
+Any other key-path input, such as the main, adds nothing: a deposit sweep's
+fee is covered by its deposits' `maximumSweepFee`, the C-05 proof rule. No
+parameter change revokes a defense. The C-06 incoming sweep proof keeps the
+live `movedFundsSweepTxMaxTotalFee`, so the host keeps an incoming sweep's
+fee within the minimum of the live cap and the recorded caps to stay both
+provable and defensible.
 
 **Heartbeat.**
 
@@ -90,7 +110,8 @@ transaction.
   per wallet for the C-09 closure ledger.
 
 **Storage.** `FrostFraudState.Storage` (three slots) is taken from the Bridge
-gap, 14 → 11.
+gap, 14 → 11. `FrostMovementState.Incoming` gains `sweepFeeCap` as its last
+field; the struct is a mapping value, so no other slot moves.
 
 ## Evidence
 
@@ -104,6 +125,19 @@ check of the on-chain reconstruction. The tests cover:
   signature, short bond, unknown wallet);
 - proven key-path, unmined movement, script-path deposit leaf and intent
   defenses;
+- self-transfer defenses: an unmined deposit sweep on the wallet leaf, the
+  key-path main input of an unmined main and deposit sweep within the
+  deposit's cap (one satoshi above it refused), an unmined sweep of the main
+  and a proven incoming output at its recorded cap, and that defense after
+  governance lowers `movedFundsSweepTxMaxTotalFee` below its fee;
+- self-transfer refusals (output to another key, two outputs, fee one
+  satoshi above the recorded cap, a key-path input at Q that is not a
+  recorded incoming output above the deposits' caps, another wallet's
+  incoming output, another wallet's deposit, a key-path input of another
+  key), which stay actionable and time out;
+- a 128-input self-transfer defense (64 deposits on the wallet leaf, 64
+  key-path inputs recorded as incoming outputs) at 6,425,580 gas, under
+  16,777,216;
 - unauthorized spends that stay actionable, then timeout and termination;
 - the heartbeat domain;
 - the call-value guard.
@@ -115,18 +149,16 @@ that writes real intents is covered by the C-04 suites.
 
 - **D-05 and C-07 qualification.** This is the reference verifier; its
   specialist review and the P-C07-BIP340 proof are C-07's.
-- **Unmined deposit and incoming sweeps.** A sweep signature that was
-  broadcast but never mined has no on-chain authorization record, so it
-  cannot be defended. K-06 never rebroadcasts a late sweep and quarantines it,
-  but a sweep that loses a race to a depositor refund is public and
-  undefendable. This needs an on-chain sweep intent or a conflict-proof
-  defense (D-05, OPEN).
+- **D-05.** The self-transfer kind is a test value (OPEN). Done in K-08:
+  unmined deposit and incoming sweeps, which had no defense before, are now
+  defended as self-transfers.
 - **C-09:** the sanction route on timeout (D-03), a closure ledger that
   includes `openChallenges`, and closing-period rules for challenges against
   `Closing` wallets.
-- **K-08:** the host heartbeat purpose and nonce rule, evidence retention
-  (P-K08-EVIDENCE-RETAINED) and defense submission before the deadline.
-- **Gas.** The worst-case shape (128 inputs and outputs, script path) is not
-  measured against the entrypoint budget.
+- **K-08 (host side):** the heartbeat purpose and nonce rule, evidence
+  retention (P-K08-EVIDENCE-RETAINED) and defense submission before the
+  deadline. The contract side of K-08 is the self-transfer kind above.
+- **Gas.** 128 inputs are measured for the self-transfer kind (above). A
+  128-output shape is not measured against the entrypoint budget.
 - **Legacy ECDSA wallets** keep the legacy BIP143 path; nothing here changes
   them.

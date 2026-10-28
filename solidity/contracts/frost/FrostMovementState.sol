@@ -39,6 +39,9 @@ library FrostMovementState {
         // C-09: readiness time (wallet age) and fraud termination time.
         uint64 readyAt;
         uint64 terminatedAt;
+        // K-08: the next accepted inactivity claim nonce. Appended last; the
+        // struct is a mapping value, so no other slot moves.
+        uint64 inactivityNonce;
     }
 
     /// @dev `source` is a FROST wallet ID, or a legacy wallet label left-aligned.
@@ -48,6 +51,10 @@ library FrostMovementState {
         uint64 value;
         uint64 createdAt;
         IncomingState state;
+        // K-08: movedFundsSweepTxMaxTotalFee at recording, the incoming
+        // output's part of a self-transfer defense's fee cap. Appended last;
+        // the struct is a mapping value, so no other slot moves.
+        uint64 sweepFeeCap;
     }
 
     struct Storage {
