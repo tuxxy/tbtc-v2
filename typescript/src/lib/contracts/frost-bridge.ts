@@ -98,6 +98,47 @@ export interface FrostCancellationAlternative {
 }
 
 /**
+ * Terms of one FROST deposit, as C-05 FrostDepositProfile.Terms. The template
+ * is the proposed D-04 NUMS two-leaf profile (owner decision D-04 OPEN).
+ */
+export interface FrostDepositTerms {
+  chainId: BigNumber
+  /** 20-byte Bridge address. */
+  bridge: Hex
+  bitcoinGenesis: Hex
+  fullWalletId: Hex
+  descriptorHash: Hex
+  /** 20-byte depositor address. */
+  depositor: Hex
+  /** 20-byte vault address, zero for none. */
+  vault: Hex
+  /** 8 bytes. */
+  blinding: Hex
+  /** Satoshis. */
+  amount: BigNumber
+  /** 32-byte x-only refund public key. */
+  refundKey: Hex
+  /** Unix timestamp (seconds) checked against Bitcoin median-time-past. */
+  refundLocktime: number
+  extraData: Hex
+}
+
+/**
+ * Complete Bitcoin data of one deposit; equal to C-05
+ * FrostDepositAdmission.Construction.
+ */
+export interface FrostDepositConstruction {
+  outputKey: Hex
+  root: Hex
+  parity: number
+  receipt: Hex
+  walletLeaf: Hex
+  refundLeaf: Hex
+  walletControl: Hex
+  refundControl: Hex
+}
+
+/**
  * Interface for the inactive C-04 FROST redemption entrypoints of the Bridge.
  * Every write is permissionless except where the contract requires an SPV
  * maintainer (inclusion proofs).
@@ -155,4 +196,19 @@ export interface FrostBridge {
     reservationId: Hex,
     transactionHash: BitcoinTxHash
   ): Promise<Hex>
+
+  /**
+   * C-05 frostDepositConstruction: the deposit for the terms and the
+   * registered wallet key. Reverts while addresses are disabled.
+   */
+  depositConstruction(
+    terms: FrostDepositTerms
+  ): Promise<FrostDepositConstruction>
+
+  /**
+   * C-05 frostDepositRefundConstruction: the historical construction of a
+   * revealed deposit, available even while admission is paused.
+   * @param depositKey - C-05 deposit key of the funding outpoint.
+   */
+  depositRefundConstruction(depositKey: Hex): Promise<FrostDepositConstruction>
 }
