@@ -18,6 +18,7 @@ pragma solidity 0.8.17;
 import {IWalletRegistry as EcdsaWalletRegistry} from "@keep-network/ecdsa/contracts/api/IWalletRegistry.sol";
 import "@keep-network/random-beacon/contracts/ReimbursementPool.sol";
 
+import "../frost/FrostWallets.sol";
 import "./IRelay.sol";
 import "./Deposit.sol";
 import "./Redemption.sol";
@@ -332,7 +333,8 @@ library BridgeState {
         // the struct in the upcoming versions we need to reduce the array size.
         // See https://docs.openzeppelin.com/contracts/4.x/upgradeable#storage_gaps
         // slither-disable-next-line unused-state
-        uint256[48] __gap;
+        FrostWallets.Storage frost;
+        uint256[44] __gap;
     }
 
     event DepositParametersUpdated(

@@ -137,6 +137,7 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   // Step 3: Get existing libraries for Bridge upgrade
   console.log("\nStep 3: Collecting existing libraries...")
 
+  const FrostBridge = await get("FrostBridge")
   const DepositSweep = await get("DepositSweep")
   const Wallets = await get("Wallets")
   const Fraud = await get("Fraud")
@@ -161,6 +162,7 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   const BridgeFactory = await ethers.getContractFactory("Bridge", {
     signer: await ethers.getSigner(deployer),
     libraries: {
+      FrostBridge: FrostBridge.address,
       Deposit: Deposit.address,
       DepositSweep: DepositSweep.address,
       Redemption: Redemption.address,
@@ -379,6 +381,7 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
         address: bridgeImplementation.address,
         constructorArguments: [],
         libraries: {
+          FrostBridge: FrostBridge.address,
           Deposit: Deposit.address,
           DepositSweep: DepositSweep.address,
           Redemption: Redemption.address,

@@ -126,6 +126,8 @@ export default async function bridgeFixture(): Promise<{
       factoryOpts: {
         signer: deployer,
         libraries: {
+          FrostBridge: (await helpers.contracts.getContract("FrostBridge"))
+            .address,
           Deposit: (await helpers.contracts.getContract("Deposit")).address,
           DepositSweep: (await helpers.contracts.getContract("DepositSweep"))
             .address,

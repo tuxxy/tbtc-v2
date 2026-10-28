@@ -15,6 +15,10 @@
 
 pragma solidity 0.8.17;
 
+import "../frost/FrostWallets.sol";
+import "../frost/FrostTypes.sol";
+import "../frost/FrostBridge.sol";
+
 import "@keep-network/random-beacon/contracts/Governable.sol";
 import "@keep-network/random-beacon/contracts/ReimbursementPool.sol";
 import {IWalletOwner as EcdsaWalletOwner} from "@keep-network/ecdsa/contracts/api/IWalletOwner.sol";
@@ -2079,5 +2083,11 @@ contract Bridge is
     ) external {
         // The caller is checked in the internal function.
         self.notifyRedemptionVeto(walletPubKeyHash, redeemerOutputScript);
+    }
+
+    // Only the selectors declared by IFrostBridge are accepted by this linked
+    // library. Existing selectors keep their original implementations.
+    fallback(bytes calldata input) external returns (bytes memory) {
+        return FrostBridge.dispatch(self, input);
     }
 }

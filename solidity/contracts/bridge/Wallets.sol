@@ -15,12 +15,16 @@
 
 pragma solidity 0.8.17;
 
+import "../frost/FrostWallets.sol";
+import "../frost/FrostTypes.sol";
+
 import {BTCUtils} from "@keep-network/bitcoin-spv-sol/contracts/BTCUtils.sol";
 import {EcdsaDkg} from "@keep-network/ecdsa/contracts/libraries/EcdsaDkg.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
 import "./BitcoinTx.sol";
 import "./EcdsaLib.sol";
+import "../frost/FrostCurve.sol";
 import "./BridgeState.sol";
 
 /// @title Wallet library
@@ -205,11 +209,13 @@ library Wallets {
             "Caller is not the ECDSA Wallet Registry"
         );
 
+        require(FrostCurve.validPoint(publicKeyX, publicKeyY), "Invalid ECDSA curve point");
         // Compress wallet's public key and calculate Bitcoin's hash160 of it.
         bytes20 walletPubKeyHash = bytes20(
             EcdsaLib.compressPublicKey(publicKeyX, publicKeyY).hash160View()
         );
 
+        require(walletPubKeyHash != bytes20(0) && self.frost.wallets[walletPubKeyHash].state == FrostWallets.State.Unknown, "Wallet label occupied");
         Wallet storage wallet = self.registeredWallets[walletPubKeyHash];
         require(
             wallet.state == WalletState.Unknown,
