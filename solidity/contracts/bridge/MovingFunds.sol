@@ -22,6 +22,7 @@ import "./BitcoinTx.sol";
 import "./BridgeState.sol";
 import "./Redemption.sol";
 import "./Wallets.sol";
+import "../frost/FrostMovement.sol";
 
 /// @title Moving Bridge wallet funds
 /// @notice The library handles the logic for moving Bitcoin between Bridge
@@ -56,6 +57,8 @@ library MovingFunds {
         // during the processing. The validation is usually done as part
         // of the `BitcoinTx.validateProof` call that checks the SPV proof.
         bytes movingFundsTxOutputVector;
+        // Source wallet; recorded on FROST incoming obligations of a drain.
+        bytes20 sourceWallet;
         // This struct doesn't contain `__gap` property as the structure is not
         // stored, it is used as a function's memory argument.
     }
@@ -210,8 +213,18 @@ library MovingFunds {
 
         require(walletBtcBalance > 0, "Wallet BTC balance is zero");
 
+        // C-06 drain: a commitment names either legacy Live wallets or
+        // eligible FROST wallets, never both.
+        bool drain = targetWallets.length > 0 &&
+            self.frost.wallets[targetWallets[0]].state !=
+            FrostWallets.State.Unknown;
+        require(
+            !drain || self.frostMovement.drainEnabled,
+            "FROST drain disabled"
+        );
+
         uint256 expectedTargetWalletsCount = Math.min(
-            self.liveWalletsCount,
+            drain ? self.frostMovement.eligibleTargets : self.liveWalletsCount,
             Math.ceilDiv(walletBtcBalance, self.walletMaxBtcTransfer)
         );
 
@@ -226,32 +239,11 @@ library MovingFunds {
             "Submitted target wallets count is other than expected"
         );
 
-        uint160 lastProcessedTargetWallet = 0;
-
-        for (uint256 i = 0; i < targetWallets.length; i++) {
-            bytes20 targetWallet = targetWallets[i];
-
-            require(
-                targetWallet != walletPubKeyHash,
-                "Submitted target wallet cannot be equal to the source wallet"
-            );
-
-            require(
-                uint160(targetWallet) > lastProcessedTargetWallet,
-                "Submitted target wallet breaks the expected order"
-            );
-
-            require(
-                self.registeredWallets[targetWallet].state ==
-                    Wallets.WalletState.Live,
-                "Submitted target wallet must be in Live state"
-            );
-
-            lastProcessedTargetWallet = uint160(targetWallet);
-        }
-
-        wallet.movingFundsTargetWalletsCommitmentHash = keccak256(
-            abi.encodePacked(targetWallets)
+        wallet.movingFundsTargetWalletsCommitmentHash = validateTargets(
+            self,
+            walletPubKeyHash,
+            targetWallets,
+            drain
         );
 
         emit MovingFundsCommitmentSubmitted(
@@ -398,6 +390,12 @@ library MovingFunds {
             mainUtxo
         );
 
+        // A drain whose legacy source timed out can still confirm on Bitcoin:
+        // its late proof records the FROST incoming outputs (C-06).
+        bool lateDrain = self.registeredWallets[walletPubKeyHash].state ==
+            Wallets.WalletState.Terminated &&
+            self.frostMovement.drainTargets[walletPubKeyHash].length > 0;
+
         (
             bytes32 targetWalletsHash,
             uint256 outputsTotalValue
@@ -405,7 +403,8 @@ library MovingFunds {
                 self,
                 MovingFundsTxOutputsProcessingInfo(
                     movingFundsTxHash,
-                    movingFundsTx.outputVector
+                    movingFundsTx.outputVector,
+                    walletPubKeyHash
                 )
             );
 
@@ -415,7 +414,12 @@ library MovingFunds {
             "Transaction fee is too high"
         );
 
-        self.notifyWalletFundsMoved(walletPubKeyHash, targetWalletsHash);
+        finishMovingFundsProof(
+            self,
+            walletPubKeyHash,
+            targetWalletsHash,
+            lateDrain
+        );
         // slither-disable-next-line reentrancy-events
         emit MovingFundsCompleted(walletPubKeyHash, movingFundsTxHash);
     }
@@ -463,6 +467,7 @@ library MovingFunds {
 
         bytes20[] memory targetWallets = new bytes20[](outputsCount);
         uint64[] memory outputsValues = new uint64[](outputsCount);
+        bytes32[] memory descriptorHashes = new bytes32[](outputsCount);
 
         // Outputs processing loop. Note that the `outputIndex` must be
         // `uint32` to build proper `movedFundsSweepRequests` keys.
@@ -480,6 +485,32 @@ library MovingFunds {
                 outputLength
             );
 
+            // Extract the value from given output.
+            outputsValues[outputIndex] = output.extractValue();
+            outputsTotalValue += outputsValues[outputIndex];
+
+            if (
+                output.length == 43 &&
+                output[8] == 0x22 &&
+                output[9] == 0x51 &&
+                output[10] == 0x20
+            ) {
+                // C-06 drain output `OP_1 PUSH32 Q` of a FROST target. It
+                // becomes a FROST incoming obligation, never a legacy request.
+                (
+                    targetWallets[outputIndex],
+                    descriptorHashes[outputIndex]
+                ) = recordDrainOutput(
+                    self,
+                    processInfo,
+                    output,
+                    outputIndex,
+                    outputsValues[outputIndex]
+                );
+                outputStartingIndex += outputLength;
+                continue;
+            }
+
             bytes20 targetWalletPubKeyHash = self.extractPubKeyHash(output);
 
             // Add the wallet public key hash to the list that will be used
@@ -488,10 +519,6 @@ library MovingFunds {
             // list must be exactly the same as the pre-committed target wallet
             // list which is guaranteed to be valid.
             targetWallets[outputIndex] = targetWalletPubKeyHash;
-
-            // Extract the value from given output.
-            outputsValues[outputIndex] = output.extractValue();
-            outputsTotalValue += outputsValues[outputIndex];
 
             // Register a moved funds sweep request that must be handled
             // by the target wallet. The target wallet must sweep the
@@ -546,9 +573,132 @@ library MovingFunds {
             );
         }
 
+        uint256 frostOutputs = 0;
+        for (uint256 i = 0; i < outputsCount; i++)
+            if (descriptorHashes[i] != bytes32(0)) frostOutputs++;
+        require(
+            frostOutputs == 0 || frostOutputs == outputsCount,
+            "FROST drain mixes schemes"
+        );
+        if (frostOutputs > 0) {
+            delete self.frostMovement.drainTargets[processInfo.sourceWallet];
+            delete self.frostMovement.drainDescriptorHashes[
+                processInfo.sourceWallet
+            ];
+        }
         targetWalletsHash = keccak256(abi.encodePacked(targetWallets));
 
         return (targetWalletsHash, outputsTotalValue);
+    }
+
+    /// @dev Validates the committed targets and returns the commitment hash.
+    function validateTargets(
+        BridgeState.Storage storage self,
+        bytes20 walletPubKeyHash,
+        bytes20[] calldata targetWallets,
+        bool drain
+    ) internal returns (bytes32) {
+        uint160 lastProcessedTargetWallet = 0;
+
+        for (uint256 i = 0; i < targetWallets.length; i++) {
+            bytes20 targetWallet = targetWallets[i];
+
+            require(
+                targetWallet != walletPubKeyHash,
+                "Submitted target wallet cannot be equal to the source wallet"
+            );
+
+            require(
+                uint160(targetWallet) > lastProcessedTargetWallet,
+                "Submitted target wallet breaks the expected order"
+            );
+
+            if (drain) {
+                self.frostMovement.drainTargets[walletPubKeyHash].push(
+                    targetWallet
+                );
+                self.frostMovement.drainDescriptorHashes[walletPubKeyHash].push(
+                        commitDrainTarget(self, targetWallet)
+                    );
+            } else {
+                require(
+                    self.registeredWallets[targetWallet].state ==
+                        Wallets.WalletState.Live,
+                    "Submitted target wallet must be in Live state"
+                );
+            }
+
+            lastProcessedTargetWallet = uint160(targetWallet);
+        }
+
+        // Drains keep the legacy hash: the descriptor hashes are bound in
+        // drainDescriptorHashes, so legacy validators and hosts read it as is.
+        return keccak256(abi.encodePacked(targetWallets));
+    }
+
+    /// @dev Ends a moving funds proof: the legacy closing transition, or for
+    ///      a late drain of a terminated source the commitment check alone.
+    function finishMovingFundsProof(
+        BridgeState.Storage storage self,
+        bytes20 walletPubKeyHash,
+        bytes32 targetWalletsHash,
+        bool lateDrain
+    ) internal {
+        if (!lateDrain) {
+            self.notifyWalletFundsMoved(walletPubKeyHash, targetWalletsHash);
+            return;
+        }
+        Wallets.Wallet storage wallet = self.registeredWallets[
+            walletPubKeyHash
+        ];
+        require(
+            wallet.movingFundsTargetWalletsCommitmentHash == targetWalletsHash,
+            "Target wallets don't correspond to the commitment"
+        );
+        delete wallet.mainUtxoHash;
+    }
+
+    /// @dev Records a drain output as its FROST target's incoming obligation.
+    function recordDrainOutput(
+        BridgeState.Storage storage self,
+        MovingFundsTxOutputsProcessingInfo memory processInfo,
+        bytes memory output,
+        uint32 outputIndex,
+        uint64 value
+    ) internal returns (bytes20 label, bytes32 descriptorHash) {
+        label = self.frost.outputKeys[output.slice(11, 32).toBytes32()];
+        require(label != bytes20(0), "FROST output unknown");
+        FrostWallets.Wallet storage target = self.frost.wallets[label];
+        bytes32[] storage committed = self.frostMovement.drainDescriptorHashes[
+            processInfo.sourceWallet
+        ];
+        require(
+            outputIndex < committed.length &&
+                committed[outputIndex] == target.descriptorHash,
+            "FROST drain descriptor"
+        );
+        FrostMovement.recordIncoming(
+            self,
+            target.id,
+            bytes32(processInfo.sourceWallet),
+            processInfo.movingFundsTxHash,
+            outputIndex,
+            value
+        );
+        self.frostMovement.inboundCommitments[target.id]--;
+        return (label, target.descriptorHash);
+    }
+
+    /// @dev Checks a drain target and counts the commitment as its inbound
+    ///      obligation until the movement proof records its output.
+    function commitDrainTarget(BridgeState.Storage storage self, bytes20 label)
+        internal
+        returns (bytes32)
+    {
+        FrostWallets.Wallet storage target = self.frost.wallets[label];
+        require(FrostWallets.isMovementTarget(target), "FROST movement target");
+        self.frostMovement.inboundCommitments[target.id]++;
+        return target.descriptorHash;
     }
 
     /// @notice Notifies about a timed out moving funds process. Terminates
