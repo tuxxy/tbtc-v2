@@ -6,7 +6,8 @@
 // terminated wallet regains after its movement completed is movable. The
 // wallet starts a fresh movement period, can commit and prove a movement of
 // the regained custody, and can then close. It stays Terminated throughout
-// (its sanction state survives). Both sides of closure are covered: custody
+// (its sanction state survives, including the original terminatedAt, which
+// also anchors its closure deadline). Both sides of closure are covered: custody
 // regained before final closure (the reported case) and after it.
 //
 // Everything runs through public entrypoints: termination by a defeated
@@ -128,6 +129,12 @@ describe("C-09 terminated wallet regains custody (tuxxy/tbtc-v2#25)", () => {
       const late = await w.reveal(x, 50000, 365 * 86400)
       await terminate(x)
       const { terminatedAt } = await w.frost.frostWalletLifecycle(x.id)
+      // The sanction (state and its original timestamp) survives every step.
+      const sanctionKept = async (step: string) =>
+        expect(
+          (await w.frost.frostWalletLifecycle(x.id)).terminatedAt,
+          `terminated wallet: the original terminatedAt changed ${step}`
+        ).to.equal(terminatedAt)
 
       // The first movement completes; the wallet stays Terminated.
       await commit(x, targets)
@@ -153,10 +160,7 @@ describe("C-09 terminated wallet regains custody (tuxxy/tbtc-v2#25)", () => {
         await w.state(x),
         "terminated wallet: regaining custody cleared its terminated status"
       ).to.equal(State.Terminated)
-      expect(
-        (await w.frost.frostWalletLifecycle(x.id)).terminatedAt,
-        "terminated wallet: terminatedAt changed"
-      ).to.equal(terminatedAt)
+      await sanctionKept("after the late sweep")
 
       // The regained custody is committable in a fresh period and movable.
       const [target] = targets
@@ -178,16 +182,36 @@ describe("C-09 terminated wallet regains custody (tuxxy/tbtc-v2#25)", () => {
       const commitment = await w.commitment(x, lifecycle.period)
       expect(commitment.mainOutpoint).to.equal(sweep.key(0))
       expect(commitment.targets).to.deep.equal([target.label])
+      await sanctionKept("after the fresh commitment")
 
       await move(x, [sweep.hash, 0], 49000, [target])
       expect((await w.frost.frostWalletCustody(x.id)).value).to.equal(0)
       expect(await w.state(x)).to.equal(State.Terminated)
       expect(await open(x)).to.equal(0)
+      await sanctionKept("after the movement proof")
 
-      // And it can close once clear.
-      await advance(closingPeriod + 1)
-      await w.frost.finalizeFrostWalletClosing(x.id)
+      // Closure runs from the original termination: a terminated wallet's
+      // closing period starts at terminatedAt, and nothing else is open.
+      const deadline = terminatedAt.toNumber() + closingPeriod
+      if ((await w.now()) < deadline) {
+        await network.provider.send("evm_setNextBlockTimestamp", [deadline])
+        await expect(
+          w.frost.finalizeFrostWalletClosing(x.id),
+          "terminated wallet: closed before its original termination deadline"
+        ).to.be.revertedWith("FROST closing period")
+      }
+      let closed: string | undefined
+      try {
+        await (await w.frost.finalizeFrostWalletClosing(x.id)).wait()
+      } catch (e: any) {
+        closed = e.reason ?? e.message
+      }
+      expect(
+        closed,
+        "terminated wallet: closure is not available at its original termination deadline"
+      ).to.equal(undefined)
       expect(await w.state(x)).to.equal(State.Closed)
+      await sanctionKept("through final closure")
     })
   }
 })

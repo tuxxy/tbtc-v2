@@ -1,0 +1,28 @@
+diff --git a/solidity/contracts/frost/FrostMovement.sol b/solidity/contracts/frost/FrostMovement.sol
+index 64fff405..e177acf9 100644
+--- a/solidity/contracts/frost/FrostMovement.sol
++++ b/solidity/contracts/frost/FrostMovement.sol
+@@ -208,6 +208,8 @@ library FrostMovement {
+         self.spentMainUTXOs[uint256(main)] = true;
+         /* solhint-disable-next-line not-rely-on-time */
+         commitment.provenAt = uint64(block.timestamp);
++        // CONTROL (review probe25resetdeadline): renew the sanction timestamp at the fresh movement.
++        if (movement.lifecycles[walletId].period > 0) movement.lifecycles[walletId].terminatedAt = uint64(block.timestamp);
+         if (source.state == FrostWallets.State.MovingFunds) {
+             source.state = FrostWallets.State.Closing;
+             movement.lifecycles[walletId].closingStartedAt = commitment
+@@ -777,7 +779,13 @@ library FrostMovement {
+             .lifecycles[walletId];
+         bool closed = wallet.state == FrostWallets.State.Closing ||
+             wallet.state == FrostWallets.State.Closed;
+-        if (!closed && !lifecycle.dust) return;
++        // CONTROL fix-shaped: a terminated wallet regaining custody opens a
++        // fresh period and keeps its state.
++        if (
++            !closed &&
++            !lifecycle.dust &&
++            wallet.state != FrostWallets.State.Terminated
++        ) return;
+         lifecycle.period += 1;
+         lifecycle.dust = false;
+         if (!closed) return;
