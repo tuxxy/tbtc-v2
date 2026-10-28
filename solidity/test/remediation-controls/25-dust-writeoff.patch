@@ -1,0 +1,13 @@
+diff --git a/solidity/contracts/frost/FrostMovement.sol b/solidity/contracts/frost/FrostMovement.sol
+index 8225416f..0cc2387f 100644
+--- a/solidity/contracts/frost/FrostMovement.sol
++++ b/solidity/contracts/frost/FrostMovement.sol
+@@ -571,6 +571,8 @@ library FrostMovement {
+         );
+         requireClear(self, walletId);
+         lifecycle.dust = true;
++        // WRONG-FIX (review R5): write off a reopened terminated wallet's dust without a spend proof.
++        if (wallet.state == FrostWallets.State.Terminated && lifecycle.period > 0) self.frostCustody.wallets[walletId].value = 0;
+         // A terminated wallet records its dust and stays Terminated.
+         if (wallet.state == FrostWallets.State.MovingFunds) {
+             wallet.state = FrostWallets.State.Closing;
