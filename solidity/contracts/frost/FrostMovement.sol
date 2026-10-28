@@ -763,7 +763,8 @@ library FrostMovement {
     }
 
     /// @dev New custody was credited (a late incoming or deposit sweep). A
-    /// Closing or Closed wallet returns to MovingFunds in a new period, and
+    /// Closing or Closed wallet returns to MovingFunds in a new period, a
+    /// Terminated wallet whose movement was proven starts a new period, and
     /// recorded dust is cleared in any state, so the credited value can move
     /// again. Closing deleted nothing.
     function reopen(BridgeState.Storage storage self, bytes32 walletId)
@@ -777,7 +778,12 @@ library FrostMovement {
             .lifecycles[walletId];
         bool closed = wallet.state == FrostWallets.State.Closing ||
             wallet.state == FrostWallets.State.Closed;
-        if (!closed && !lifecycle.dust) return;
+        // A terminated wallet stays Terminated when its movement is proven,
+        // so custody it regains afterwards also needs a fresh period.
+        bool moved = wallet.state == FrostWallets.State.Terminated &&
+            FrostMovementState.current(self.frostMovement, walletId).provenAt !=
+            0;
+        if (!closed && !moved && !lifecycle.dust) return;
         lifecycle.period += 1;
         lifecycle.dust = false;
         if (!closed) return;

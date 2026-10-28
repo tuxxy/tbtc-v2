@@ -1,0 +1,19 @@
+diff --git a/solidity/contracts/frost/FrostMovement.sol b/solidity/contracts/frost/FrostMovement.sol
+index 64fff405..3509786d 100644
+--- a/solidity/contracts/frost/FrostMovement.sol
++++ b/solidity/contracts/frost/FrostMovement.sol
+@@ -777,7 +777,13 @@ library FrostMovement {
+             .lifecycles[walletId];
+         bool closed = wallet.state == FrostWallets.State.Closing ||
+             wallet.state == FrostWallets.State.Closed;
+-        if (!closed && !lifecycle.dust) return;
++        // CONTROL fix-shaped: a terminated wallet regaining custody opens a
++        // fresh period and keeps its state.
++        if (
++            !closed &&
++            !lifecycle.dust &&
++            wallet.state != FrostWallets.State.Terminated
++        ) return;
+         lifecycle.period += 1;
+         lifecycle.dust = false;
+         if (!closed) return;
