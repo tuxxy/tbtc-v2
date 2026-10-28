@@ -18,6 +18,11 @@ func main() {
 		PrevScript     string `json:"prevScript"`
 		Value          int64  `json:"value"`
 		Leaf           string `json:"leaf"`
+		InputIndex     int    `json:"inputIndex"`
+		Prevouts       []struct {
+			Value  int64  `json:"value"`
+			Script string `json:"script"`
+		} `json:"prevouts"`
 	}
 	if err := json.NewDecoder(os.Stdin).Decode(&input); err != nil {
 		panic(err)
@@ -47,12 +52,39 @@ func main() {
 	result["inputVector"] = "0x" + hex.EncodeToString(plain[4:4+vinSize])
 	result["outputVector"] = "0x" + hex.EncodeToString(plain[4+vinSize:len(plain)-4])
 	result["locktime"] = "0x" + hex.EncodeToString(plain[len(plain)-4:])
-	if input.Leaf != "" {
-		if len(tx.TxIn) != 1 || input.Value <= 0 {
-			panic("single-input positive-value test boundary")
+	if input.Leaf != "" || input.PrevScript != "" || input.Value != 0 || len(input.Prevouts) != 0 {
+		var fetcher txscript.PrevOutputFetcher
+		if len(input.Prevouts) != 0 {
+			if len(input.Prevouts) != len(tx.TxIn) || input.InputIndex < 0 || input.InputIndex >= len(tx.TxIn) {
+				panic("complete ordered prevout set and valid input index required")
+			}
+			multi := txscript.NewMultiPrevOutFetcher(nil)
+			for i, previous := range input.Prevouts {
+				if previous.Value <= 0 || previous.Value > 2100000000000000 || previous.Script == "" {
+					panic("positive bounded prevout value and script required")
+				}
+				multi.AddPrevOut(tx.TxIn[i].PreviousOutPoint, wire.NewTxOut(previous.Value, decode(previous.Script)))
+			}
+			fetcher = multi
+		} else {
+			if len(tx.TxIn) != 1 || input.Value <= 0 || input.InputIndex != 0 {
+				panic("single-input positive-value test boundary")
+			}
+			if input.PrevScript == "" {
+				panic("previous output script required")
+			}
+			fetcher = txscript.NewCannedPrevOutputFetcher(decode(input.PrevScript), input.Value)
 		}
-		fetcher := txscript.NewCannedPrevOutputFetcher(decode(input.PrevScript), input.Value)
-		digest, err := txscript.CalcTapscriptSignaturehash(txscript.NewTxSigHashes(tx, fetcher), txscript.SigHashDefault, tx, 0, fetcher, txscript.NewBaseTapLeaf(decode(input.Leaf)))
+		hashes := txscript.NewTxSigHashes(tx, fetcher)
+		var digest []byte
+		var err error
+		if input.Leaf != "" {
+			digest, err = txscript.CalcTapscriptSignaturehash(hashes, txscript.SigHashDefault, tx, input.InputIndex, fetcher, txscript.NewBaseTapLeaf(decode(input.Leaf)))
+			result["spendType"] = "script-path"
+		} else {
+			digest, err = txscript.CalcTaprootSignatureHash(hashes, txscript.SigHashDefault, tx, input.InputIndex, fetcher)
+			result["spendType"] = "key-path"
+		}
 		if err != nil {
 			panic(err)
 		}
