@@ -1,0 +1,13 @@
+diff --git a/solidity/contracts/bridge/MovingFunds.sol b/solidity/contracts/bridge/MovingFunds.sol
+index 7094ef74..24a205cd 100644
+--- a/solidity/contracts/bridge/MovingFunds.sol
++++ b/solidity/contracts/bridge/MovingFunds.sol
+@@ -218,6 +218,8 @@ library MovingFunds {
+         bool drain = targetWallets.length > 0 &&
+             self.frost.wallets[targetWallets[0]].state !=
+             FrostWallets.State.Unknown;
++        // CONTROL: legacy targets refused in every mode.
++        require(drain, "Legacy targets disabled");
+         require(
+             !drain || self.frostMovement.drainEnabled,
+             "FROST drain disabled"

@@ -1,0 +1,18 @@
+diff --git a/solidity/contracts/maintainer/MaintainerProxy.sol b/solidity/contracts/maintainer/MaintainerProxy.sol
+index 4ef2dfe0..baa6da83 100644
+--- a/solidity/contracts/maintainer/MaintainerProxy.sol
++++ b/solidity/contracts/maintainer/MaintainerProxy.sol
+@@ -222,11 +222,8 @@ contract MaintainerProxy is Ownable, Reimbursable {
+         uint256 gasStart = gasleft();
+ 
+         bridge.resetMovingFundsTimeout(walletPubKeyHash);
+-
+-        reimbursementPool.refund(
+-            (gasStart - gasleft()) + resetMovingFundsTimeoutGasOffset,
+-            msg.sender
+-        );
++        // CONTROL: no refund.
++        gasStart;
+     }
+ 
+     /// @notice Wraps `Bridge.submitMovingFundsProof` call and reimburses the

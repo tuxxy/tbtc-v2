@@ -1,0 +1,13 @@
+diff --git a/solidity/contracts/bridge/Bridge.sol b/solidity/contracts/bridge/Bridge.sol
+index 0d11f83c..82fea53b 100644
+--- a/solidity/contracts/bridge/Bridge.sol
++++ b/solidity/contracts/bridge/Bridge.sol
+@@ -845,6 +845,8 @@ contract Bridge is
+     ///      - Live wallets count must be zero,
+     ///      - The moving funds timeout reset delay must be elapsed.
+     function resetMovingFundsTimeout(bytes20 walletPubKeyHash) external {
++        // CONTROL: no reset after the cutover.
++        require(!(self.frostExposure.creationMode == FrostExposureState.FROST_ONLY), "No reset after cutover");
+         self.resetMovingFundsTimeout(walletPubKeyHash);
+     }
+ 

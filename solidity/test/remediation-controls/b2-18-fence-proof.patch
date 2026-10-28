@@ -1,0 +1,18 @@
+diff --git a/solidity/contracts/bridge/Bridge.sol b/solidity/contracts/bridge/Bridge.sol
+index 0d11f83c..78efdad7 100644
+--- a/solidity/contracts/bridge/Bridge.sol
++++ b/solidity/contracts/bridge/Bridge.sol
+@@ -899,6 +899,13 @@ contract Bridge is
+         BitcoinTx.UTXO calldata mainUtxo,
+         bytes20 walletPubKeyHash
+     ) external onlySpvMaintainer {
++        // CONTROL: a legacy movement proof is refused after the cutover,
++        // even for a commitment made before it.
++        require(
++            !(self.frostExposure.creationMode == FrostExposureState.FROST_ONLY) ||
++                self.frostMovement.drainTargets[walletPubKeyHash].length > 0,
++            "Legacy movement after cutover"
++        );
+         self.submitMovingFundsProof(
+             movingFundsTx,
+             movingFundsProof,
