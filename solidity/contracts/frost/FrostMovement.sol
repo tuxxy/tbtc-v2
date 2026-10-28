@@ -53,6 +53,11 @@ library FrostMovement {
     event FrostIncomingEscalated(bytes32 indexed outpoint);
     event FrostMovingFundsBelowDust(bytes32 indexed walletId, uint64 value);
     event FrostWalletReopened(bytes32 indexed walletId);
+    event FrostSanctionNotified(
+        bytes32 indexed walletId,
+        bytes32 descriptorHash,
+        bytes32 reason
+    );
     event FrostDrainReleased(bytes20 indexed source);
     event FrostMovingFundsCommitmentRetired(
         bytes32 indexed walletId,
@@ -73,7 +78,8 @@ library FrostMovement {
         require(
             walletId != bytes32(0) &&
                 source.id == walletId &&
-                source.state == FrostWallets.State.MovingFunds,
+                (source.state == FrostWallets.State.MovingFunds ||
+                    source.state == FrostWallets.State.Terminated),
             "FROST movement source"
         );
         require(
@@ -465,6 +471,11 @@ library FrostMovement {
         );
         commitment.escalated = true;
         emit FrostMovingFundsEscalated(walletId);
+        emit FrostSanctionNotified(
+            walletId,
+            self.frost.wallets[bytes20(walletId)].descriptorHash,
+            keccak256("moving-funds-timeout")
+        );
     }
 
     /// @notice With no eligible target, restart the moving funds clock.
@@ -523,6 +534,11 @@ library FrostMovement {
         );
         incoming.state = FrostMovementState.IncomingState.Escalated;
         emit FrostIncomingEscalated(outpoint);
+        emit FrostSanctionNotified(
+            incoming.target,
+            self.frost.wallets[bytes20(incoming.target)].descriptorHash,
+            keccak256("moved-funds-sweep-timeout")
+        );
     }
 
     /// @notice Record a below-dust main as retained dust and begin closing.
@@ -540,7 +556,8 @@ library FrostMovement {
         require(
             walletId != bytes32(0) &&
                 wallet.id == walletId &&
-                wallet.state == FrostWallets.State.MovingFunds &&
+                (wallet.state == FrostWallets.State.MovingFunds ||
+                    wallet.state == FrostWallets.State.Terminated) &&
                 FrostMovementState
                     .current(self.frostMovement, walletId)
                     .mainOutpoint ==
@@ -550,9 +567,12 @@ library FrostMovement {
         );
         requireClear(self, walletId);
         lifecycle.dust = true;
-        wallet.state = FrostWallets.State.Closing;
-        /* solhint-disable-next-line not-rely-on-time */
-        lifecycle.closingStartedAt = uint64(block.timestamp);
+        // A terminated wallet records its dust and stays Terminated.
+        if (wallet.state == FrostWallets.State.MovingFunds) {
+            wallet.state = FrostWallets.State.Closing;
+            /* solhint-disable-next-line not-rely-on-time */
+            lifecycle.closingStartedAt = uint64(block.timestamp);
+        }
         emit FrostMovingFundsBelowDust(walletId, value);
     }
 
@@ -702,7 +722,10 @@ library FrostMovement {
         lifecycle.period += 1;
         lifecycle.dust = false;
         if (!closed) return;
-        wallet.state = FrostWallets.State.MovingFunds;
+        // A terminated wallet keeps its terminated state when it reopens.
+        wallet.state = lifecycle.terminatedAt != 0
+            ? FrostWallets.State.Terminated
+            : FrostWallets.State.MovingFunds;
         /* solhint-disable-next-line not-rely-on-time */
         lifecycle.movingFundsRequestedAt = uint64(block.timestamp);
         lifecycle.closingStartedAt = 0;

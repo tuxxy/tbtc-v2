@@ -435,6 +435,8 @@ library FrostBridge {
                 capabilityVersion
             );
             self.frostMovement.eligibleTargets++;
+            /* solhint-disable-next-line not-rely-on-time */
+            self.frostMovement.lifecycles[id].readyAt = uint64(block.timestamp);
         } else if (selector == IFrostBridge.__snowfallWalletExpired.selector) {
             FrostWallets.expire(self.frost, abi.decode(args, (bytes32)));
         } else if (selector == IFrostBridge.frostRegistry.selector) {

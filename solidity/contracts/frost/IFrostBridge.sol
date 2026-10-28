@@ -5,6 +5,7 @@ import "./FrostRedemptionState.sol";
 import "./IFrostFundingBridge.sol";
 import "./IFrostMovementBridge.sol";
 import "./IFrostFraudBridge.sol";
+import "./IFrostLifecycleBridge.sol";
 import "./FrostCancellationCertificate.sol";
 import "./FrostCancellationHistory.sol";
 
@@ -12,7 +13,8 @@ import "./FrostCancellationHistory.sol";
 interface IFrostBridge is
     IFrostFundingBridge,
     IFrostMovementBridge,
-    IFrostFraudBridge
+    IFrostFraudBridge,
+    IFrostLifecycleBridge
 {
     function frostCancellationWinner(bytes32 reservationId)
         external

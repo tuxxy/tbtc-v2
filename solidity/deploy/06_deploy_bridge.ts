@@ -55,10 +55,12 @@ const func: DeployFunction = async function deployBridge(
   })
   const FrostMovement = await deploy("FrostMovement", deployOptions)
   const FrostFraud = await deploy("FrostFraud", deployOptions)
+  const FrostLifecycle = await deploy("FrostLifecycle", deployOptions)
   const FrostFraudDispatch = await deploy("FrostFraudDispatch", {
     ...deployOptions,
     libraries: {
       FrostFraud: FrostFraud.address,
+      FrostLifecycle: FrostLifecycle.address,
     },
   })
   const FrostMovementDispatch = await deploy("FrostMovementDispatch", {
@@ -134,6 +136,7 @@ const func: DeployFunction = async function deployBridge(
     await helpers.etherscan.verify(FrostRedemptionRequests)
     await helpers.etherscan.verify(FrostCancellationAdmissions)
     await helpers.etherscan.verify(FrostRedemptionSettlement)
+    await helpers.etherscan.verify(FrostLifecycle)
     await helpers.etherscan.verify(FrostFraud)
     await helpers.etherscan.verify(FrostFraudDispatch)
     await helpers.etherscan.verify(FrostMovement)
