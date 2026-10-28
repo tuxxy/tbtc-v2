@@ -1,0 +1,12 @@
+diff --git a/solidity/contracts/frost/FrostRedemptionLedger.sol b/solidity/contracts/frost/FrostRedemptionLedger.sol
+index 53be2247..d33b8e2c 100644
+--- a/solidity/contracts/frost/FrostRedemptionLedger.sol
++++ b/solidity/contracts/frost/FrostRedemptionLedger.sol
+@@ -443,7 +443,6 @@ library FrostRedemptionLedger {
+             pending.state = State.Refundable;
+         }
+         wallet.activeReservation = bytes32(0);
+-        wallet.cancellationExposure = 0;
+         wallet.stateVersion++;
+         require(
+             wallet.value >= self.netLiability[intent.certificate.walletId],
