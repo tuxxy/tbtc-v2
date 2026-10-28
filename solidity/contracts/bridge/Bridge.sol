@@ -2087,7 +2087,7 @@ contract Bridge is
 
     // Only the selectors declared by IFrostBridge are accepted by this linked
     // library. Existing selectors keep their original implementations.
-    fallback(bytes calldata input) external returns (bytes memory) {
+    fallback(bytes calldata input) external payable returns (bytes memory) {
         return FrostBridge.dispatch(self, input);
     }
 }
