@@ -1,0 +1,16 @@
+diff --git a/solidity/contracts/frost/FrostMovement.sol b/solidity/contracts/frost/FrostMovement.sol
+index 64fff405..44ee8299 100644
+--- a/solidity/contracts/frost/FrostMovement.sol
++++ b/solidity/contracts/frost/FrostMovement.sol
+@@ -101,10 +101,7 @@ library FrostMovement {
+             walletId
+         ];
+         require(
+-            custody.mainOutpoint != bytes32(0) &&
+-                custody.value > 0 &&
+-                self.frostCustody.outputs[custody.mainOutpoint].value ==
+-                custody.value,
++            custody.mainOutpoint != bytes32(0) && custody.value > 0, // CONTROL
+             "FROST movement balance"
+         );
+         uint256 maxTransfer = self.walletMaxBtcTransfer;
