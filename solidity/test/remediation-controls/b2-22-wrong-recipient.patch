@@ -1,0 +1,16 @@
+diff --git a/solidity/contracts/maintainer/MaintainerProxy.sol b/solidity/contracts/maintainer/MaintainerProxy.sol
+index 4ef2dfe0..c85826bb 100644
+--- a/solidity/contracts/maintainer/MaintainerProxy.sol
++++ b/solidity/contracts/maintainer/MaintainerProxy.sol
+@@ -223,9 +223,10 @@ contract MaintainerProxy is Ownable, Reimbursable {
+ 
+         bridge.resetMovingFundsTimeout(walletPubKeyHash);
+ 
++        // CONTROL (review R7): the refund goes to the owner, not the caller.
+         reimbursementPool.refund(
+             (gasStart - gasleft()) + resetMovingFundsTimeoutGasOffset,
+-            msg.sender
++            owner()
+         );
+     }
+ 

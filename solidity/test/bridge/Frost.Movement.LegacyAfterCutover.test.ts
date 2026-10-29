@@ -618,7 +618,9 @@ describe("Batch 2: legacy sources after the FROST cutover", () => {
   // cutover: each reset entrypoint has a MaintainerProxy function of the same
   // name and inputs, and in each no-route state where the Bridge accepts a
   // reset, calling that wrapper resets the timeout and refunds the caller
-  // from the ReimbursementPool.
+  // (not the proxy owner or anyone else) from the ReimbursementPool: the
+  // caller's balance change net of the receipt's gas cost is positive and
+  // equals what the pool paid (review R7).
   describe("tuxxy/tbtc-v2#22 (D7): the reimbursed reset path", () => {
     async function maintainerProxy() {
       const pool = await deploy(
@@ -678,12 +680,33 @@ describe("Batch 2: legacy sources after the FROST cutover", () => {
             reasons.push(`${fragment.format()}: ${reason}`)
             continue
           }
-          const before = await ethers.provider.getBalance(pool.address)
-          await (await wrapper[fragment.format()](...args)).wait()
+          // Review R7: the caller (a stranger) must be the one refunded.
+          // The MaintainerProxy owner is a different account.
+          expect(await proxy.owner()).to.not.equal(stranger.address)
+          const poolBefore = await ethers.provider.getBalance(pool.address)
+          const callerBefore = await ethers.provider.getBalance(
+            stranger.address
+          )
+          const receipt = await (
+            await wrapper[fragment.format()](...args)
+          ).wait()
+          const gas = receipt.gasUsed.mul(receipt.effectiveGasPrice)
+          const refunded = (
+            await ethers.provider.getBalance(stranger.address)
+          )
+            .sub(callerBefore)
+            .add(gas)
+          const paid = poolBefore.sub(
+            await ethers.provider.getBalance(pool.address)
+          )
           expect(
-            await ethers.provider.getBalance(pool.address),
-            "the MaintainerProxy reset refunded nothing"
-          ).to.be.lt(before)
+            refunded,
+            "the MaintainerProxy reset did not reimburse its caller"
+          ).to.be.gt(0)
+          expect(
+            refunded,
+            "the reimbursement pool paid an account other than the caller"
+          ).to.equal(paid)
           done = fragment.format()
           break
         }
