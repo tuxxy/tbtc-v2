@@ -21,3 +21,17 @@ scratch build), then with the control applied on top of it.
 | none (fix head `6138226d`) | `Frost.Lifecycle.TerminatedRegainDust.test.ts` | passes | 1 passing (the two frozen #25 cases pass too) |
 | `25-open-period-in-commit.patch` (review W-h, against the fix head: the fix in `reopen` undone and the fresh period opened inside `commit` instead) | `Frost.Lifecycle.TerminatedRegainDust.test.ts` | fails at the dust assertion | fails: "terminated wallet: the dust-sized custody regained after its proven movement cannot be recorded as dust: ... 'FROST movement dust state'"; the two frozen #25 cases still pass, which is the gap this test closes |
 | `25-dust-writeoff.patch` (review R5: after `lifecycle.dust = true`, zero a reopened terminated wallet's custody value without a spend proof) | `Frost.Lifecycle.TerminatedRegainDust.test.ts` | fails at the retained-dust assertion | fails: "terminated wallet: the retained dust custody value changed after the dust notification: Expected "0" to be equal 14000"; the two frozen #25 cases still pass |
+
+## D13 rework of the #24 test (2026-10-29)
+
+D13 is answered from base: consolidate into the main first, then move the
+main alone. `Frost.Movement.NonMainCustody.test.ts` now accepts only paths B
+(deposit-sweep consolidation) and C (moved-funds-sweep consolidation), and
+requires path A (one movement spending the main and every other recognized
+output) to be refused. No #24 fix exists yet, so there is no fix-head run.
+
+| Patch | Test file | Expected | Result recorded 2026-10-29 |
+| --- | --- | --- | --- |
+| none (integration base) | `Frost.Movement.NonMainCustody.test.ts` | the two drain cases fail (no accepted path); the guard passes | A is refused at `commit` ("FROST movement balance"), so the D13 assertion holds; both drain cases then fail at "no public path moves the wallet's recognized custody" (B: "FROST sweep deposit", C: "FROST incoming input"); the guard passes |
+| `24-move-all-outputs.patch` (path A: `commit` drops the main-equals-custody check and `prove` spends the main plus every other unspent recognized output, requiring their sum to equal custody) | `Frost.Movement.NonMainCustody.test.ts` | both drain cases fail at the D13 assertion | fails: "C-06 non-main custody (D13): one movement spent the main and the other recognized outputs without consolidating into the main first" (both cases); the guard passes |
+| `24-drop-custody-equality.patch` (unchanged, rerun) | `Frost.Movement.NonMainCustody.test.ts` | the guard fails | fails as before: "partial movement: the wallet closed with recognized custody left: Expected "49000" to be equal 0"; A is refused at "FROST movement input", and the drain cases fail at "no public path" |

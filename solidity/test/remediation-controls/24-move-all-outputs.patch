@@ -1,0 +1,89 @@
+diff --git a/solidity/contracts/frost/FrostMovement.sol b/solidity/contracts/frost/FrostMovement.sol
+index 64fff405..be8e7318 100644
+--- a/solidity/contracts/frost/FrostMovement.sol
++++ b/solidity/contracts/frost/FrostMovement.sol
+@@ -101,10 +101,7 @@ library FrostMovement {
+             walletId
+         ];
+         require(
+-            custody.mainOutpoint != bytes32(0) &&
+-                custody.value > 0 &&
+-                self.frostCustody.outputs[custody.mainOutpoint].value ==
+-                custody.value,
++            custody.mainOutpoint != bytes32(0) && custody.value > 0, // CONTROL
+             "FROST movement balance"
+         );
+         uint256 maxTransfer = self.walletMaxBtcTransfer;
+@@ -176,20 +173,20 @@ library FrostMovement {
+             walletId
+         ];
+         bytes32 main = commitment.mainOutpoint;
+-        {
+-            bytes memory inputs = transaction.inputVector;
+-            require(
+-                inputs.length == 42 &&
+-                    inputs[0] == 0x01 &&
+-                    inputs[37] == 0x00 &&
+-                    inputKey(inputs, 1) == main &&
+-                    custody.mainOutpoint == main &&
+-                    custody.activeReservation == bytes32(0) &&
+-                    !self.spentMainUTXOs[uint256(main)],
+-                "FROST movement input"
+-            );
+-        }
+-        uint64 mainValue = self.frostCustody.outputs[main].value;
++        require(
++            custody.mainOutpoint == main &&
++                custody.activeReservation == bytes32(0),
++            "FROST movement input"
++        );
++        // CONTROL (D13 path A): one movement spends the main and every other
++        // recognized output of the wallet.
++        uint64 mainValue = spendAll(
++            self,
++            walletId,
++            main,
++            transaction.inputVector
++        );
++        require(mainValue == custody.value, "FROST movement input");
+         uint256 total = recordOutputs(
+             self,
+             walletId,
+@@ -791,6 +788,37 @@ library FrostMovement {
+         emit FrostWalletReopened(walletId);
+     }
+ 
++    function spendAll(
++        BridgeState.Storage storage self,
++        bytes32 walletId,
++        bytes32 main,
++        bytes memory inputs
++    ) private returns (uint64 total) {
++        uint256 count = uint8(inputs[0]);
++        require(
++            count > 0 &&
++                count < 0xfd &&
++                inputs.length == 1 + count * 41 &&
++                inputKey(inputs, 1) == main,
++            "FROST movement input"
++        );
++        for (uint256 i = 0; i < count; i++) {
++            uint256 offset = 1 + i * 41;
++            bytes32 key = inputKey(inputs, offset);
++            FrostCustody.Output storage output = self.frostCustody.outputs[key];
++            require(
++                inputs[offset + 36] == 0x00 &&
++                    output.walletId == walletId &&
++                    !output.spent &&
++                    !self.spentMainUTXOs[uint256(key)],
++                "FROST movement input"
++            );
++            output.spent = true;
++            self.spentMainUTXOs[uint256(key)] = true;
++            total += output.value;
++        }
++    }
++
+     function inputKey(bytes memory inputs, uint256 offset)
+         private
+         pure

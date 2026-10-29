@@ -15,14 +15,17 @@
 // exclude the reserved main), and settlement then replaces the main and keeps
 // the swept output. C-09 moves the wallet to MovingFunds.
 //
-// The spec does not fix the mechanism and the review names two (consolidate,
-// or move every recognized output). This test therefore accepts any of these
-// paths through the existing entrypoints:
-//   A. commit, then one movement spending the main and every other output;
-//   B. consolidate with a deposit-sweep proof (main included), then A;
-//   C. consolidate with a moved-funds sweep proof, then A.
-// A fix through a new entrypoint needs an amendment (DECISIONS.md, pending
-// question on tbtc-v2#24).
+// The mechanism is D13 (DECISIONS.md, answered from base 2026-10-29):
+// consolidate into the main first, then move the main alone. Base refuses a
+// moving-funds commitment while moved-funds sweeps are pending, and a base
+// movement spends only the main. The test accepts either consolidation
+// through the existing entrypoints, each followed by a commitment and a
+// movement of the consolidated main:
+//   B. consolidate with a deposit-sweep proof (main included);
+//   C. consolidate with a moved-funds sweep proof.
+// It requires the one-step alternative to be refused:
+//   A. commit, then one movement spending the main and every other output.
+// A fix through a new entrypoint needs an amendment.
 //
 // Inclusion proofs are synthetic regtest blocks (movementWorld); the C-04
 // reservation certificate is signed by the wallet's operators.
@@ -180,7 +183,9 @@ describe("C-06 non-main recognized custody (tuxxy/tbtc-v2#24)", () => {
     }
   }
 
-  /// Path A from the current custody: commit, move every recognized output.
+  /// Commit, then one movement spending `outputs`: path A when they are the
+  /// split custody, the final step of B and C when they are the consolidated
+  /// main.
   const commitAndMoveAll = async (outputs: Recognized[]) => {
     const total = outputs.reduce((s, o) => s + o.value, 0)
     const committed = await tryTx("commit", () =>
@@ -203,7 +208,8 @@ describe("C-06 non-main recognized custody (tuxxy/tbtc-v2#24)", () => {
     return { move, values }
   }
 
-  /// Consolidation into one output to the wallet's own key, then path A.
+  /// Consolidation into one output to the wallet's own key, then a movement
+  /// of that main alone.
   const consolidateThenMove = async (
     label: string,
     outputs: Recognized[],
@@ -223,9 +229,18 @@ describe("C-06 non-main recognized custody (tuxxy/tbtc-v2#24)", () => {
   }
 
   const drains = async (outputs: Recognized[]) => {
+    // D13: the one-step movement of the split custody must be refused.
+    const before = await network.provider.send("evm_snapshot")
+    const oneStep = await commitAndMoveAll(outputs)
+    expect(
+      oneStep.failure,
+      "C-06 non-main custody (D13): one movement spent the main and the other recognized outputs without consolidating into the main first"
+    ).to.not.equal(undefined)
+    await assertNoClosureWithCustody("A: move every recognized output")
+    expect(await network.provider.send("evm_revert", [before])).to.equal(true)
+
     const failures: string[] = []
     const paths: [string, () => Promise<any>][] = [
-      ["A: move every recognized output", () => commitAndMoveAll(outputs)],
       [
         "B: consolidate by deposit sweep",
         () =>
