@@ -1,6 +1,8 @@
 # Batch 2 controls (tbtc-v2)
 
-Refs tuxxy/tbtc-v2#18, #20, #22 and D8; the tests are
+Refs tuxxy/tbtc-v2#18, #20, #22 and D8 (#21 closed 2026-10-29: the reset keeps
+the base `liveWalletsCount == 0` rule, so nothing requires it to be refused;
+the reset is a keeper job, sent here from a third-party account); the tests are
 `test/bridge/Frost.Movement.LegacyAfterCutover.test.ts`. Each `b2-*.patch` is
 applied to a scratch checkout of `integration/frost-base` `2377d060`, compiled,
 the test file run with `USE_EXTERNAL_DEPLOY=true TEST_USE_STUBS_TBTC=true`, and
@@ -11,7 +13,8 @@ At `2377d060` `MovingFunds` has about 90 bytes left and `Bridge` about 318, so
 these controls sit in `Bridge.sol` wrappers or `MaintainerProxy`, and a fix
 must fit the same margins.
 
-Without a control (integration `2377d060`): 27 passing, 7 failing (the #18
+Without a control (integration `2377d060`): 27 passing, 7 failing (unchanged
+at `remediation/tests-batch2` after the 2026-10-29 keeper-reset comments) (the #18
 refusal, the four FrostOnly resets with a legacy Live wallet, the two
 reimbursed FrostOnly resets with a legacy Live wallet).
 

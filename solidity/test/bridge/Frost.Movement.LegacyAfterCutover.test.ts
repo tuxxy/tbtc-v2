@@ -7,15 +7,20 @@
 // tuxxy/tbtc-v2#20 (K09-28): after FrostOnly, a legacy MovingFunds source with
 //   no commitment and no admissible route must keep a legal recovery (the
 //   timeout reset) whatever the legacy Live count, so it is not terminated.
-//   Before the cutover with zero Live wallets (K09-39, tuxxy/keep-core#54) the
-//   same holds, including a partial custody budget.
+//   Before the cutover with zero Live wallets the same holds, including a
+//   partial custody budget (the base rule, kept as a guard; K09-39,
+//   tuxxy/keep-core#54, was closed as moot on 2026-10-29). The reset is sent
+//   by a keeper, as in base (DECISIONS.md "Standing default"); the tests call
+//   it from a third-party account.
 // tuxxy/tbtc-v2#22 (K09-50) with owner decision D7: the reimbursed path
 //   (MaintainerProxy) must service every reset the Bridge offers a legacy
 //   source, before and after the cutover.
 // D8: below dust, notifyMovingFundsBelowDust stays permissionless.
 //
-// Not covered (pending): tuxxy/tbtc-v2#21 (K09-36, reset while an admissible
-// drain exists): DECISIONS.md D6 leaves the K09-36 approval unanswered.
+// Not tested: tuxxy/tbtc-v2#21 (K09-36, reset while an admissible drain
+// exists) was closed on 2026-10-29: the reset keeps the base rule
+// (liveWalletsCount == 0) whether or not a drain is admissible, so no test
+// requires it to be refused.
 //
 // Every legacy wallet is reached through public calls only: the real registry
 // callback (FrostDrainRegistryFixture, a labelled fixture: no DKG), a real
@@ -501,8 +506,9 @@ describe("Batch 2: legacy sources after the FROST cutover", () => {
     })
   })
 
-  // tuxxy/tbtc-v2#20 (FrostOnly) and the contract half of tuxxy/keep-core#54
-  // (LegacyOpen/LegacyDraining with zero Live wallets).
+  // tuxxy/tbtc-v2#20 (FrostOnly), and LegacyOpen/LegacyDraining with zero Live
+  // wallets as a guard (the contract half of tuxxy/keep-core#54, closed as
+  // moot).
   //
   // Invariant (spec line 729, P-K11-CONTAINMENT-KEEPS-EXITS): a legacy
   // MovingFunds source with no commitment and no admissible route keeps a
@@ -562,7 +568,7 @@ describe("Batch 2: legacy sources after the FROST cutover", () => {
     return { source, main, open }
   }
 
-  describe("tuxxy/tbtc-v2#20 and tuxxy/keep-core#54: the reset stays reachable with no route", () => {
+  describe("tuxxy/tbtc-v2#20: the reset stays reachable with no route", () => {
     for (const c of recoveryCases) {
       it(`${ModeName[c.mode]}, ${c.live ? "a legacy Live wallet" : "zero Live wallets"}, ${c.blocker}`, async () => {
         const { source, main, open } = await noRouteWorld(c)
