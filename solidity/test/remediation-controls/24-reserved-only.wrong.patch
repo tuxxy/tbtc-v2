@@ -1,0 +1,23 @@
+Removal control for tuxxy/tbtc-v2#24: refuses an ordinary deposit-only sweep
+only while the reservation is in state Reserved; once it is TimeoutPending
+(or Quarantined) the old deposit-only credit beside the reserved main is
+accepted again. Never applied in the committed tree.
+
+diff --git a/solidity/contracts/frost/FrostDepositSweep.sol b/solidity/contracts/frost/FrostDepositSweep.sol
+--- a/solidity/contracts/frost/FrostDepositSweep.sol
++++ b/solidity/contracts/frost/FrostDepositSweep.sol
+@@ -387,7 +387,13 @@
+         require(
+             request.includeMain ||
+                 balance.mainOutpoint == bytes32(0) ||
+-                balance.activeReservation != bytes32(0),
++                (balance.activeReservation != bytes32(0) &&
++                    bridge
++                        .frostRedemptions
++                        .ledger
++                        .intents[balance.activeReservation]
++                        .state !=
++                    FrostRedemptionLedger.IntentState.Reserved),
+             "FROST sweep main required"
+         );
+         if (request.includeMain)
