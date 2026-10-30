@@ -1,0 +1,12 @@
+diff --git a/solidity/contracts/frost/FrostMovement.sol b/solidity/contracts/frost/FrostMovement.sol
+index 64fff405..d48d9b77 100644
+--- a/solidity/contracts/frost/FrostMovement.sol
++++ b/solidity/contracts/frost/FrostMovement.sol
+@@ -115,6 +115,7 @@ library FrostMovement {
+             : needed;
+         require(expected > 0, "FROST movement no target");
+         require(targets.length == expected, "FROST movement target count");
++        require(targets.length <= 128, "FROST movement target cap");
+         uint160 previous = 0;
+         for (uint256 i = 0; i < targets.length; i++) {
+             bytes20 label = targets[i];

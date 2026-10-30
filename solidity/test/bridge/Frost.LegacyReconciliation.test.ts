@@ -2,6 +2,7 @@
 import { expect } from "chai"
 import { utils } from "ethers"
 import fs from "fs"
+import os from "os"
 import path from "path"
 import {
   legacyDepositScript,
@@ -16,7 +17,7 @@ describe("D08 legacy reconciliation piece 1: actual Core deposit and sweep", () 
   const depositor = `0x${"11".repeat(20)}`
   const evidence =
     process.env.FROST_C04_LEGACY_EVIDENCE ||
-    "/private/tmp/c04-legacy-piece1-20261014/evidence"
+    fs.mkdtempSync(path.join(os.tmpdir(), "c04-legacy-piece1-"))
   let witness: Awaited<ReturnType<typeof runLegacyCoreWitness>>
   before(async () => {
     witness = await runLegacyCoreWitness(evidence, { depositor })
@@ -143,12 +144,12 @@ describe("D08 legacy reconciliation piece 2a: public pre-upgrade origin", () => 
   let f: Awaited<ReturnType<typeof publicLegacyOriginFixture>>
   const evidence =
     process.env.FROST_C04_LEGACY_PUBLIC_EVIDENCE ||
-    "/private/tmp/c04-legacy-piece2-20261014/evidence"
+    fs.mkdtempSync(path.join(os.tmpdir(), "c04-legacy-piece2a-"))
   before(async () => {
     f = await publicLegacyOriginFixture(evidence)
   })
 
-  it("publicly registers, reveals, proves Bank credit and escrows a pending request on pinned 76f7905", async () => {
+  it("publicly registers, reveals, proves Bank credit and escrows a pending request on pinned 40a11d1d", async () => {
     expect(f.baselineSourceHashes.length).greaterThan(0)
     expect(await f.admin.getProxyImplementation(f.bridge.address)).eq(
       f.implementation.address
@@ -214,7 +215,7 @@ describe("D08 legacy reconciliation piece 2a: public pre-upgrade origin", () => 
     const manifest = JSON.parse(
       fs.readFileSync(path.join(evidence, "public-legacy-origin.json"), "utf8")
     )
-    expect(manifest.baselineRevision).eq("76f7905")
+    expect(manifest.baselineRevision).eq("40a11d1d")
     expect(manifest.productionQualification).eq(false)
     expect(manifest.inventoryStatus).eq(
       "pending original payment; no signed redemption or fulfilled disposition yet"
@@ -267,7 +268,7 @@ describe("D08 legacy reconciliation piece 2b: signed payment across actual upgra
     const { ethers } = await import("hardhat")
     const evidence = path.join(
       process.env.FROST_C04_LEGACY_PUBLIC_EVIDENCE ||
-        "/private/tmp/c04-legacy-piece2-20261014/evidence",
+        fs.mkdtempSync(path.join(os.tmpdir(), "c04-legacy-piece2-")),
       "piece2b"
     )
     const f = await publicLegacyOriginFixture(evidence)
@@ -445,7 +446,7 @@ describe("D08 legacy reconciliation piece 2b: signed payment across actual upgra
         "One controlled public legacy inventory entry; known key/controlled registry/zero integer regtest relay difficulty. No production census, threshold signing or K05 qualification.",
       productionQualification: false,
       inventoryStatus: "fulfilled original payment",
-      baselineRevision: "76f7905",
+      baselineRevision: "40a11d1d",
       upgradedRuntimeRevision: f.currentRevision,
       requestKey: f.requestKey,
       originalRequest: oldRequest,
