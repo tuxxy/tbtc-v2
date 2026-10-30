@@ -1,0 +1,30 @@
+Control for tuxxy/tbtc-v2#24 (D13 refinement): the minimal correct fix.
+Removes the reserved-main exception to "FROST sweep main required": while a
+FROST wallet's main is reserved, an ordinary deposit sweep is refused whether
+or not it claims the main. The C-04 sweep-resolution route (proveResolution,
+includeMain with the reservation's resolution id) and a no-main wallet's
+deposit-only first sweep are unchanged. Never applied in the committed tree.
+
+diff --git a/solidity/contracts/frost/FrostDepositSweep.sol b/solidity/contracts/frost/FrostDepositSweep.sol
+--- a/solidity/contracts/frost/FrostDepositSweep.sol
++++ b/solidity/contracts/frost/FrostDepositSweep.sol
+@@ -298,7 +298,7 @@ library FrostDepositSweep {
+     ) private {
+         // Main replacement is allowed only with its canonical spend proof, and
+-        // cannot race a redemption reservation. Additional deposit-only sweeps
+-        // retain the existing main and all captured reservation inputs.
++        // cannot race a redemption reservation. A deposit-only sweep is
++        // admitted only for a wallet with no main, so custody stays one main.
+         if (request.includeMain) {
+             FrostCustody.Wallet storage balance = bridge.frostCustody.wallets[
+                 request.walletId
+@@ -386,8 +386,6 @@ library FrostDepositSweep {
+         FrostCustody.Wallet storage balance = custody.wallets[request.walletId];
+         require(
+-            request.includeMain ||
+-                balance.mainOutpoint == bytes32(0) ||
+-                balance.activeReservation != bytes32(0),
++            request.includeMain || balance.mainOutpoint == bytes32(0),
+             "FROST sweep main required"
+         );
+         if (request.includeMain)
