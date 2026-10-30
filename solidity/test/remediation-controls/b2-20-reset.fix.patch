@@ -1,0 +1,20 @@
+diff --git a/solidity/contracts/bridge/MovingFunds.sol b/solidity/contracts/bridge/MovingFunds.sol
+index 7094ef74..0d312df6 100644
+--- a/solidity/contracts/bridge/MovingFunds.sol
++++ b/solidity/contracts/bridge/MovingFunds.sol
+@@ -298,7 +298,14 @@ library MovingFunds {
+             "Target wallets commitment already submitted"
+         );
+ 
+-        require(self.liveWalletsCount == 0, "Live wallets count must be zero");
++        // CONTROL (positive): after the cutover the reset ignores the
++        // legacy Live count (crude: it does not check the drain route).
++        require(
++            self.liveWalletsCount == 0 ||
++                self.frostExposure.creationMode ==
++                FrostExposureState.FROST_ONLY,
++            "Live wallets count must be zero"
++        );
+ 
+         require(
+             /* solhint-disable-next-line not-rely-on-time */

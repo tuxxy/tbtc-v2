@@ -1,0 +1,19 @@
+diff --git a/solidity/contracts/bridge/Bridge.sol b/solidity/contracts/bridge/Bridge.sol
+index 0d11f83c..bd959127 100644
+--- a/solidity/contracts/bridge/Bridge.sol
++++ b/solidity/contracts/bridge/Bridge.sol
+@@ -845,6 +845,14 @@ contract Bridge is
+     ///      - Live wallets count must be zero,
+     ///      - The moving funds timeout reset delay must be elapsed.
+     function resetMovingFundsTimeout(bytes20 walletPubKeyHash) external {
++        // CONTROL (the K09-39 regression): an enabled drain with an eligible
++        // target counts as an available route, whatever the budget or
++        // containment (fits the Bridge's EIP-170 margin).
++        require(
++            !self.frostMovement.drainEnabled ||
++                self.frostMovement.eligibleTargets == 0,
++            "FROST drain route available"
++        );
+         self.resetMovingFundsTimeout(walletPubKeyHash);
+     }
+ 
