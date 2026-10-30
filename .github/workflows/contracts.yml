@@ -100,11 +100,12 @@ jobs:
         run: yarn build
 
       # The Go test helpers build offline (GOPROXY=off) from their pinned
-      # modules.
+      # modules, and the Core-backed tests run a pinned Bitcoin Core.
       - name: Provision test dependencies
         run: |
           (cd test/helpers/frost-digest && go mod download all)
           (cd test/helpers/frost-verifier-oracle && go mod download all)
+          node test/helpers/bitcoin-core/provision.cjs
 
       # We don't want to execute the tests for dapp-friendly contracts (either
       # when deploying from `dapp-development` or during PR checks on that branch).

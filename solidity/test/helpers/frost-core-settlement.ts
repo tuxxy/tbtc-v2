@@ -16,6 +16,7 @@ import {
   reapCore,
   copyStoppedCoreTemplate,
 } from "./frost-test-isolation"
+import { CORE, CORE_SHA } from "./frost-core-binary"
 
 export type TransactionInfo = {
   version: string
@@ -41,9 +42,6 @@ export type CoreSettlementOptions = {
   competingRaw?: string
   replaceRaw?: string
 }
-const CORE = "/private/tmp/k04-tools/bitcoin-29.0/bin"
-const CORE_SHA =
-  "f4b9d78a74643c726d022840ca506dc317d41f8825aaef80b7bb705e12c5fda8"
 const sha = (b: Buffer) => createHash("sha256").update(b).digest()
 const hash256 = (b: Buffer) => sha(sha(b))
 const reverse = (s: string) => Buffer.from(s, "hex").reverse()

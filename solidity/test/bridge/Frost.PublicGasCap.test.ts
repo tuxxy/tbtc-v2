@@ -2,6 +2,8 @@
 import { ethers, network } from "hardhat"
 import { expect } from "chai"
 import fs from "fs"
+import os from "os"
+import path from "path"
 import {
   publicFundedFixture,
   bitcoinProof,
@@ -15,7 +17,7 @@ describe("FROST transaction gas cap measurement", () => {
   it("measures public admission, payment and cancellation under the transaction cap", async () => {
     const evidence =
       process.env.FROST_C04_GAS_EVIDENCE ||
-      fs.mkdtempSync("/private/tmp/c04-gas-cap-")
+      fs.mkdtempSync(path.join(os.tmpdir(), "c04-gas-cap-"))
     const f = await publicFundedFixture({
       evidenceDirectory: `${evidence}/origin`,
       depositAmount: 1200000,
