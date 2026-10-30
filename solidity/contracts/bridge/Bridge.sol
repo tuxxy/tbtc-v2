@@ -818,6 +818,16 @@ contract Bridge is
         uint256 walletMemberIndex,
         bytes20[] calldata targetWallets
     ) external {
+        // C-06/C-10: after the cutover a new commitment names FROST targets
+        // only. A legacy commitment made before it still completes. Placed
+        // here for the MovingFunds library's EIP-170 margin.
+        require(
+            self.frostExposure.creationMode != FrostExposureState.FROST_ONLY ||
+                (targetWallets.length > 0 &&
+                    self.frost.wallets[targetWallets[0]].state !=
+                    FrostWallets.State.Unknown),
+            "Legacy targets after cutover"
+        );
         uint256 gasStart = gasleft();
 
         self.submitMovingFundsCommitment(
