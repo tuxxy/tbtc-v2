@@ -382,9 +382,14 @@ export async function runLegacyCoreWitness(
     }
     assert(ready, "Core bounded startup")
     rpc("createwallet", ["legacyfixture"])
-    const miner = rpc<string>("getnewaddress", [], true)
-    for (let remaining = 101; remaining > 0; remaining -= 10)
-      rpc("generatetoaddress", [Math.min(10, remaining), miner])
+    // One coinbase funds the wallet. Every other block pays OP_TRUE, which the
+    // wallet does not own: a block that pays the wallet makes Core sync the
+    // wallet to disk, which dominated setup under parallel runs.
+    rpc("generatetoaddress", [1, rpc<string>("getnewaddress", [], true)])
+    const sink = rpc<{ descriptor: string }>("getdescriptorinfo", [
+      "raw(51)",
+    ]).descriptor
+    rpc("generatetodescriptor", [100, sink])
     const depositScript = Buffer.concat([
       Buffer.from("0020", "hex"),
       sha(witnessScript),
@@ -394,7 +399,7 @@ export async function runLegacyCoreWitness(
       ...bech32.toWords(sha(witnessScript)),
     ])
     const txid = rpc<string>("sendtoaddress", [address, bitcoinAmount], true)
-    const fundingBlock = rpc<string[]>("generatetoaddress", [1, miner])[0]
+    const fundingBlock = rpc<string[]>("generatetodescriptor", [1, sink])[0]
     const fundingTx = rpc<CoreTx>("getrawtransaction", [
       txid,
       true,
@@ -479,7 +484,7 @@ export async function runLegacyCoreWitness(
     assert.equal(mempool.allowed, true, JSON.stringify(mempool))
     const sweepTxid = rpc<string>("sendrawtransaction", [raw])
     assert.equal(sweepTxid, transaction.txidRPC)
-    const sweepBlock = rpc<string[]>("generatetoaddress", [1, miner])[0]
+    const sweepBlock = rpc<string[]>("generatetodescriptor", [1, sink])[0]
     assert.equal(rpc("gettxout", [txid, input.index]), null, "deposit consumed")
     const actualMain = rpc<{ value: number; scriptPubKey: { hex: string } }>(
       "gettxout",
