@@ -167,14 +167,14 @@ export default async function runCoreWitnessCheck(
       "-regtest",
       `-datadir=${dataDirectory}`,
       `-rpcport=${port}`,
-      "-rpcclienttimeout=5",
+      "-rpcclienttimeout=30",
       ...(wallet ? ["-rpcwallet=c05fixture"] : []),
       method,
       ...args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))),
     ]
     try {
       const text = execFileSync(path.join(CORE, "bitcoin-cli"), parameters, {
-        timeout: 10000,
+        timeout: 45000,
         maxBuffer: 8 * 1024 * 1024,
         stdio: ["ignore", "pipe", "pipe"],
       })

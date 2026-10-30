@@ -270,13 +270,13 @@ export async function runLegacyCoreWitness(
           "-regtest",
           `-datadir=${dataDirectory}`,
           `-rpcport=${port}`,
-          "-rpcclienttimeout=5",
+          "-rpcclienttimeout=30",
           ...(wallet ? ["-rpcwallet=legacyfixture"] : []),
           method,
           ...args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))),
         ],
         {
-          timeout: 10000,
+          timeout: 45000,
           maxBuffer: 8 * 1024 * 1024,
           stdio: ["ignore", "pipe", "pipe"],
         }
@@ -1101,13 +1101,13 @@ export async function legacyPaymentPhase(
           "-regtest",
           `-datadir=${dataDirectory}`,
           `-rpcport=${port}`,
-          "-rpcclienttimeout=5",
+          "-rpcclienttimeout=30",
           ...(wallet ? ["-rpcwallet=legacyfixture"] : []),
           method,
           ...args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))),
         ],
         {
-          timeout: 10000,
+          timeout: 45000,
           maxBuffer: 8 * 1024 * 1024,
           stdio: ["ignore", "pipe", "pipe"],
         }
