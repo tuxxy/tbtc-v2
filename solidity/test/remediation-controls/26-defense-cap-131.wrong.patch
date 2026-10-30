@@ -1,0 +1,13 @@
+diff --git a/solidity/contracts/frost/FrostFraud.sol b/solidity/contracts/frost/FrostFraud.sol
+index 709b0839..54fca2ae 100644
+--- a/solidity/contracts/frost/FrostFraud.sol
++++ b/solidity/contracts/frost/FrostFraud.sol
+@@ -37,7 +37,7 @@ library FrostFraud {
+     uint8 internal constant AUTH_MOVEMENT = 3;
+     uint8 internal constant AUTH_SELF = 4;
+     uint256 internal constant MAX_INPUTS = 128;
+-    uint256 internal constant MAX_OUTPUTS = 128;
++    uint256 internal constant MAX_OUTPUTS = 131;
+     bytes32 internal constant HEARTBEAT_TAG =
+         sha256("tbtc-v2/frost-heartbeat/v1");
+ 

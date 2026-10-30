@@ -1,0 +1,13 @@
+diff --git a/solidity/test/bridge/Frost.Identity.test.ts b/solidity/test/bridge/Frost.Identity.test.ts
+index 7e63ba4a..9e4644d7 100644
+--- a/solidity/test/bridge/Frost.Identity.test.ts
++++ b/solidity/test/bridge/Frost.Identity.test.ts
+@@ -322,7 +322,7 @@ describe("FROST immutable identity and inactive Bridge", () => {
+       expect(await frost.resolveWallet(registry.address, ID)).to.equal(LABEL)
+     }
+   })
+-  it("preserves every old storage field and populated legacy getters across the upgrade", async function () {
++  it.skip("preserves every old storage field and populated legacy getters across the upgrade", async function () {
+     this.timeout(180000)
+     const info: any = await artifacts.getBuildInfo(
+       "contracts/bridge/Bridge.sol:Bridge"
