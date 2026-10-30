@@ -45,7 +45,7 @@
     "D08 legacy reconciliation piece 1: actual Core deposit and sweep spends the exact regular legacy P2WSH wallet branch into an unspent P2WPKH main output",
     "D08 legacy reconciliation piece 1: actual Core deposit and sweep binds funding/sweep and coinbase inclusion to real Core headers and retained proofs",
     "D08 legacy reconciliation piece 1: actual Core deposit and sweep rejects unsupported depositor/amount/ScriptNum profiles before starting Core",
-    "D08 legacy reconciliation piece 2a: public pre-upgrade origin publicly registers, reveals, proves Bank credit and escrows a pending request on pinned 76f7905",
+    "D08 legacy reconciliation piece 2a: public pre-upgrade origin publicly registers, reveals, proves Bank credit and escrows a pending request on pinned 40a11d1d",
     "D08 legacy reconciliation piece 2a: public pre-upgrade origin rejects duplicate sweep credit without changing the populated legacy financial/policy frame",
     "D08 legacy reconciliation piece 2b: signed payment across actual upgrade preserves original liabilities/policy, mines identical pre-upgrade bytes and fulfills exactly once"
   ],
