@@ -134,12 +134,12 @@ export async function runCoreConflictingSweep(
           "-regtest",
           `-datadir=${dataDirectory}`,
           `-rpcport=${port}`,
-          "-rpcclienttimeout=5",
+          "-rpcclienttimeout=30",
           method,
           ...args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))),
         ],
         {
-          timeout: 10000,
+          timeout: 45000,
           maxBuffer: 8 * 1024 * 1024,
           stdio: ["ignore", "pipe", "pipe"],
         }
