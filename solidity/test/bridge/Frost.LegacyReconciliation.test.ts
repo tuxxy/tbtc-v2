@@ -149,7 +149,7 @@ describe("D08 legacy reconciliation piece 2a: public pre-upgrade origin", () => 
     f = await publicLegacyOriginFixture(evidence)
   })
 
-  it("publicly registers, reveals, proves Bank credit and escrows a pending request on pinned 76f7905", async () => {
+  it("publicly registers, reveals, proves Bank credit and escrows a pending request on pinned 40a11d1d", async () => {
     expect(f.baselineSourceHashes.length).greaterThan(0)
     expect(await f.admin.getProxyImplementation(f.bridge.address)).eq(
       f.implementation.address
