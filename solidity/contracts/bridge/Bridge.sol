@@ -852,7 +852,8 @@ contract Bridge is
     ///      - The wallet must be in the MovingFunds state,
     ///      - The target wallets commitment must not be already submitted for
     ///        the given moving funds wallet,
-    ///      - Live wallets count must be zero,
+    ///      - Live wallets count must be zero, unless the cutover is
+    ///        complete (legacy wallets are no longer targets then),
     ///      - The moving funds timeout reset delay must be elapsed.
     function resetMovingFundsTimeout(bytes20 walletPubKeyHash) external {
         self.resetMovingFundsTimeout(walletPubKeyHash);
