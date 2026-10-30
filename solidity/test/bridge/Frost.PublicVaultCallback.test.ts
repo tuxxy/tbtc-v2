@@ -185,7 +185,8 @@ describe("C-04 public Vault callback and captured watchtower boundaries", () => 
     const p = await proposal(id)
     const intentId = reservationId(p)
     // Publicly reserve the proven initial main before the deposit-only sweep.
-    // F2 permits additive deposit-only credit while this intent retains main.
+    // D13 refinement (tuxxy/tbtc-v2#24): the reservation opens no
+    // deposit-only credit beside the reserved main.
     await f.frost.reserveFrostRedemption(p)
     const activeIntent = await f.frost.frostReservation(intentId)
     const capturedCustody = await f.frost.frostWalletCustody(f.walletId)
@@ -210,124 +211,55 @@ describe("C-04 public Vault callback and captured watchtower boundaries", () => 
     await f.vault.configure(payloads, revertAfter)
     return { id, p, payloads, intentId, activeIntent, capturedCustody }
   }
-  async function checkSuccessfulCredit(
-    prepared: Awaited<ReturnType<typeof prepareCallbacks>>
-  ) {
-    expect(await f.bridge.isVaultTrusted(f.vault.address)).eq(true)
-    expect(await f.bank.balanceOf(f.vault.address)).eq(98000)
-    expect(await f.vault.observedBankBalance()).eq(98000)
-    expect(await f.vault.received(f.depositor.address)).eq(98000)
-    expect(await f.vault.calls()).eq(1)
-    expect(await f.bank.balanceOf(f.depositor.address)).eq(78000)
-    expect(await f.bank.balanceOf(f.treasury.address)).eq(2000)
-    expect(await f.bank.balanceOf(f.frost.address)).eq(20000)
-    const custody = await f.frost.frostWalletCustody(f.walletId)
-    expect(custody.value).eq(198000)
-    expect(custody.stateVersion).eq(1)
-    expect(custody.generation).eq(1)
-    expect(custody.mainOutpoint).eq(outpointKey(f.custodyUTXO.txHash, 0))
-    expect(custody.activeReservation).eq(prepared.intentId)
-    expect(custody.stateVersion).eq(prepared.capturedCustody.stateVersion)
-    expect(custody.generation).eq(prepared.capturedCustody.generation)
-    expect(custody.cancellationExposure).eq(
-      prepared.capturedCustody.cancellationExposure
-    )
-    expect(await f.frost.frostReservation(prepared.intentId)).deep.eq(
-      prepared.activeIntent
-    )
-    expect((await f.frost.frostRedemptionRequest(prepared.id)).state).eq(2)
-    expect(
-      (await f.frost.frostRedemptionRequest(prepared.id)).reservationId
-    ).eq(prepared.intentId)
-    const escrow = await f.frost.frostRedemptionEscrow(f.walletId)
-    expect(escrow.gross).eq(20000)
-    expect(escrow.netLiability).eq(19800)
-    expect((await f.frost.frostCustodyOutput(f.sweepKey)).spent).eq(false)
-    expect(
-      (await f.frost.frostCustodyOutput(outpointKey(f.custodyUTXO.txHash, 0)))
-        .spent
-    ).eq(false)
-    expect(
-      (await f.bank.balanceOf(f.vault.address))
-        .add(await f.bank.balanceOf(f.depositor.address))
-        .add(await f.bank.balanceOf(f.treasury.address))
-        .add(await f.bank.balanceOf(f.frost.address))
-    ).eq(custody.value)
-    const reason = ethers.utils.hexConcat([
-      "0x08c379a0",
-      ethers.utils.defaultAbiCoder.encode(
-        ["string"],
-        ["FROST redemption reentry"]
-      ),
-    ])
-    for (const index of [0, 1]) {
-      expect(await f.vault.callbackSuccess(index)).eq(false)
-      expect(await f.vault.callbackResult(index)).eq(reason)
-    }
-  }
 
-  it("credits a trusted Vault through Bank while main is reserved and rejects request/reserve reentry during C05 sweep", async () => {
-    // Establish the F2 precondition: a populated unreserved wallet must sweep
-    // main, so the exact deposit-only proof is unavailable until reservation.
-    const unreserved = await frame(ethers.constants.HashZero)
-    await expect(
-      f.frost.submitFrostDepositSweepProof(f.vaultSweep)
-    ).revertedWith("FROST sweep main required")
-    expect(await frame(ethers.constants.HashZero)).eq(unreserved)
-    const prepared = await prepareCallbacks(false)
-    const { id, payloads, intentId, activeIntent } = prepared
-    await f.frost.submitFrostDepositSweepProof(f.vaultSweep)
-    await checkSuccessfulCredit(prepared)
-    expect((await f.frost.frostRedemptionRequest(nextRequestId())).state).eq(0)
-    // The request becomes usable after entered clears. The exact reservation
-    // payload instead reaches normal active-main serialization, retaining intent.
-    await f.vault.execute(payloads[0])
-    expect((await f.frost.frostRedemptionRequest(nextRequestId())).state).eq(1)
-    expect(
-      (await f.frost.frostRedemptionRequest(nextRequestId())).reservationId
-    ).eq(ethers.constants.HashZero)
-    expect((await f.frost.frostRedemptionRequest(id)).state).eq(2)
-    expect(await f.bank.balanceOf(f.vault.address)).eq(78000)
-    expect(await f.bank.balanceOf(f.frost.address)).eq(40000)
-    expect((await f.frost.frostRedemptionEscrow(f.walletId)).gross).eq(40000)
-    expect((await f.frost.frostRedemptionEscrow(f.walletId)).netLiability).eq(
-      39600
-    )
-    const before = await frame(id, intentId)
-    await expect(f.vault.execute(payloads[1])).revertedWith(
-      "FROST reservation custody state"
-    )
-    expect(await frame(id, intentId)).eq(before)
-    expect(await f.frost.frostReservation(intentId)).deep.eq(activeIntent)
-    const custody = await f.frost.frostWalletCustody(f.walletId)
-    expect(custody.activeReservation).eq(intentId)
-    expect(custody.stateVersion).eq(1)
-    expect(custody.generation).eq(1)
-  })
-
-  it("rolls back all proof/deposit/custody/Bank/Vault effects on a callback-reverting late failure", async () => {
-    const prepared = await prepareCallbacks(true)
-    const { id, payloads, intentId, activeIntent } = prepared
-    const before = await frame(id, intentId)
-    await expect(
-      f.frost.submitFrostDepositSweepProof(f.vaultSweep)
-    ).revertedWith("Vault late failure")
-    expect(await frame(id, intentId)).eq(before)
-    expect(await f.frost.frostReservation(intentId)).deep.eq(activeIntent)
-    expect((await f.frost.frostRedemptionRequest(id)).state).eq(2)
-    const custody = await f.frost.frostWalletCustody(f.walletId)
-    expect(custody.activeReservation).eq(intentId)
-    expect(custody.value).eq(99000)
-    expect(custody.stateVersion).eq(1)
-    expect(custody.generation).eq(1)
-    expect((await f.frost.frostCustodyOutput(f.sweepKey)).walletId).eq(
-      ethers.constants.HashZero
-    )
-    expect(await f.bank.balanceOf(f.vault.address)).eq(0)
-    expect(await f.vault.calls()).eq(0)
-    await f.vault.configure(payloads, false)
-    await f.frost.submitFrostDepositSweepProof(f.vaultSweep)
-    await checkSuccessfulCredit(prepared)
+  // D13 refinement (tuxxy/tbtc-v2#24). These two cases previously required
+  // the deposit-only Vault sweep to be credited while the main was reserved
+  // (then checked request/reserve reentry from the Vault callback, and the
+  // rollback of a late callback failure). Under the new rule that sweep is
+  // refused before any Bank or Vault effect, in both callback
+  // configurations. Vault-callback reentry and late-failure rollback stay
+  // covered on the C-04 sweep-resolution route, the only sweep admitted
+  // during a reservation (Frost.SweepConflictResolution.test.ts: "rejects
+  // cross-entrypoint reentry from the trusted Vault after real Bank credit",
+  // which also sends the request/reserve payloads, and "rolls back the
+  // entire financial frame on a late Vault failure ...").
+  const revertAfterModes = [false, true]
+  revertAfterModes.forEach((revertAfter) => {
+    it(`refuses the deposit-only trusted-Vault sweep while main is reserved, before any callback (callback ${
+      revertAfter ? "reverting late" : "succeeding"
+    })`, async () => {
+      // The F2 precondition: a populated unreserved wallet must sweep main.
+      const unreserved = await frame(ethers.constants.HashZero)
+      await expect(
+        f.frost.submitFrostDepositSweepProof(f.vaultSweep)
+      ).revertedWith("FROST sweep main required")
+      expect(await frame(ethers.constants.HashZero)).eq(unreserved)
+      const prepared = await prepareCallbacks(revertAfter)
+      const { id, intentId, activeIntent } = prepared
+      const before = await frame(id, intentId)
+      expect(
+        await f.frost.submitFrostDepositSweepProof(f.vaultSweep).then(
+          () => "accepted",
+          (e: Error) => e.message
+        ),
+        "tbtc-v2#24: the deposit-only Vault sweep beside the reserved main was not refused by the main guard"
+      ).to.match(/FROST sweep main (required|reserved)/)
+      expect(await frame(id, intentId)).eq(before)
+      expect(await f.frost.frostReservation(intentId)).deep.eq(activeIntent)
+      expect((await f.frost.frostRedemptionRequest(id)).state).eq(2)
+      const custody = await f.frost.frostWalletCustody(f.walletId)
+      expect(custody.activeReservation).eq(intentId)
+      expect(custody.value).eq(99000)
+      expect(custody.stateVersion).eq(1)
+      expect(custody.generation).eq(1)
+      expect(custody.mainOutpoint).eq(outpointKey(f.custodyUTXO.txHash, 0))
+      expect((await f.frost.frostCustodyOutput(f.sweepKey)).walletId).eq(
+        ethers.constants.HashZero
+      )
+      expect(await f.bridge.spentMainUTXOs(f.depositKey)).eq(false)
+      expect(await f.bank.balanceOf(f.vault.address)).eq(0)
+      expect(await f.vault.calls()).eq(0)
+    })
   })
 
   it("retains captured watchtower policy/delay across configuration changes and refuses the old service's veto", async () => {
