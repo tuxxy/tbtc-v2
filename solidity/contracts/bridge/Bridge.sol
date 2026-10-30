@@ -818,6 +818,16 @@ contract Bridge is
         uint256 walletMemberIndex,
         bytes20[] calldata targetWallets
     ) external {
+        // C-06/C-10: after the cutover a new commitment names FROST targets
+        // only. A legacy commitment made before it still completes. Placed
+        // here for the MovingFunds library's EIP-170 margin.
+        require(
+            self.frostExposure.creationMode != FrostExposureState.FROST_ONLY ||
+                (targetWallets.length > 0 &&
+                    self.frost.wallets[targetWallets[0]].state !=
+                    FrostWallets.State.Unknown),
+            "Legacy targets after cutover"
+        );
         uint256 gasStart = gasleft();
 
         self.submitMovingFundsCommitment(
@@ -842,7 +852,8 @@ contract Bridge is
     ///      - The wallet must be in the MovingFunds state,
     ///      - The target wallets commitment must not be already submitted for
     ///        the given moving funds wallet,
-    ///      - Live wallets count must be zero,
+    ///      - Live wallets count must be zero, unless the cutover is
+    ///        complete (legacy wallets are no longer targets then),
     ///      - The moving funds timeout reset delay must be elapsed.
     function resetMovingFundsTimeout(bytes20 walletPubKeyHash) external {
         self.resetMovingFundsTimeout(walletPubKeyHash);

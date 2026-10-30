@@ -1,0 +1,18 @@
+diff --git a/solidity/contracts/bridge/Bridge.sol b/solidity/contracts/bridge/Bridge.sol
+index 0d11f83c..da9bbd0d 100644
+--- a/solidity/contracts/bridge/Bridge.sol
++++ b/solidity/contracts/bridge/Bridge.sol
+@@ -818,6 +818,13 @@ contract Bridge is
+         uint256 walletMemberIndex,
+         bytes20[] calldata targetWallets
+     ) external {
++        // CONTROL (positive): legacy targets are refused after the cutover.
++        require(
++            !(self.frostExposure.creationMode == FrostExposureState.FROST_ONLY) ||
++                self.frost.wallets[targetWallets[0]].state !=
++                FrostWallets.State.Unknown,
++            "Legacy targets disabled after cutover"
++        );
+         uint256 gasStart = gasleft();
+ 
+         self.submitMovingFundsCommitment(

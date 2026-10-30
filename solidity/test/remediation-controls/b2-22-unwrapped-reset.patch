@@ -1,0 +1,20 @@
+diff --git a/solidity/contracts/bridge/Bridge.sol b/solidity/contracts/bridge/Bridge.sol
+index 0d11f83c..e0d99ac0 100644
+--- a/solidity/contracts/bridge/Bridge.sol
++++ b/solidity/contracts/bridge/Bridge.sol
+@@ -848,6 +848,15 @@ contract Bridge is
+         self.resetMovingFundsTimeout(walletPubKeyHash);
+     }
+ 
++    /// @dev CONTROL: a verified-main reset with no MaintainerProxy wrapper.
++    function resetLegacyMovingFundsTimeout(
++        bytes20 walletPubKeyHash,
++        BitcoinTx.UTXO calldata mainUtxo
++    ) external {
++        require(mainUtxo.txOutputValue > 0, "Main UTXO");
++        self.resetMovingFundsTimeout(walletPubKeyHash);
++    }
++
+     /// @notice Used by the wallet to prove the BTC moving funds transaction
+     ///         and to make the necessary state changes. Moving funds is only
+     ///         accepted if it satisfies SPV proof.

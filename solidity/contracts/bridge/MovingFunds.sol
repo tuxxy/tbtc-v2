@@ -275,7 +275,8 @@ library MovingFunds {
     ///      - The wallet must be in the MovingFunds state,
     ///      - The target wallets commitment must not be already submitted for
     ///        the given moving funds wallet,
-    ///      - Live wallets count must be zero,
+    ///      - Live wallets count must be zero, unless the cutover is
+    ///        complete (legacy wallets are no longer targets then),
     ///      - The moving funds timeout reset delay must be elapsed.
     function resetMovingFundsTimeout(
         BridgeState.Storage storage self,
@@ -298,7 +299,14 @@ library MovingFunds {
             "Target wallets commitment already submitted"
         );
 
-        require(self.liveWalletsCount == 0, "Live wallets count must be zero");
+        // After the cutover Live legacy wallets are no longer targets, so
+        // they do not count.
+        require(
+            self.liveWalletsCount == 0 ||
+                self.frostExposure.creationMode ==
+                FrostExposureState.FROST_ONLY,
+            "Live wallets count must be zero"
+        );
 
         require(
             /* solhint-disable-next-line not-rely-on-time */

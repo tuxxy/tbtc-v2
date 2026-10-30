@@ -1,0 +1,13 @@
+diff --git a/solidity/contracts/bridge/Bridge.sol b/solidity/contracts/bridge/Bridge.sol
+index 0d11f83c..b8e8f5b7 100644
+--- a/solidity/contracts/bridge/Bridge.sol
++++ b/solidity/contracts/bridge/Bridge.sol
+@@ -944,6 +944,8 @@ contract Bridge is
+         bytes20 walletPubKeyHash,
+         BitcoinTx.UTXO calldata mainUtxo
+     ) external {
++        // CONTROL: the below-dust notification is no longer permissionless.
++        require(msg.sender == self.treasury, "Below dust: treasury only");
+         self.notifyMovingFundsBelowDust(walletPubKeyHash, mainUtxo);
+     }
+ 
