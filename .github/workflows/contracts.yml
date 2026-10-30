@@ -66,6 +66,10 @@ jobs:
         working-directory: ./solidity
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The upgrade tests rebuild the pre-FROST baseline (40a11d1d) from
+          # git history.
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
