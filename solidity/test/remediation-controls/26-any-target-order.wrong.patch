@@ -1,0 +1,24 @@
+diff --git a/solidity/contracts/frost/FrostFraud.sol b/solidity/contracts/frost/FrostFraud.sol
+index 709b0839..206fbba9 100644
+--- a/solidity/contracts/frost/FrostFraud.sol
++++ b/solidity/contracts/frost/FrostFraud.sol
+@@ -37,7 +37,7 @@ library FrostFraud {
+     uint8 internal constant AUTH_MOVEMENT = 3;
+     uint8 internal constant AUTH_SELF = 4;
+     uint256 internal constant MAX_INPUTS = 128;
+-    uint256 internal constant MAX_OUTPUTS = 128;
++    uint256 internal constant MAX_OUTPUTS = 252;
+     bytes32 internal constant HEARTBEAT_TAG =
+         sha256("tbtc-v2/frost-heartbeat/v1");
+ 
+@@ -470,9 +470,7 @@ library FrostFraud {
+                 target.descriptorHash == commitment.descriptorHashes[i] &&
+                     outputs[offset + 8] == 0x22 &&
+                     outputs[offset + 9] == 0x51 &&
+-                    outputs[offset + 10] == 0x20 &&
+-                    outputs.slice(offset + 11, 32).toBytes32() ==
+-                    target.descriptor.outputKey,
++                    outputs[offset + 10] == 0x20,
+                 "FROST defense movement output"
+             );
+             for (uint256 j = 0; j < 8; j++)

@@ -28,10 +28,8 @@ import {
   compact,
   Terms,
 } from "../data/frost/deposit-profile"
+import { CORE, CORE_SHA } from "./frost-core-binary"
 
-const CORE = "/private/tmp/k04-tools/bitcoin-29.0/bin"
-const CORE_SHA =
-  "f4b9d78a74643c726d022840ca506dc317d41f8825aaef80b7bb705e12c5fda8"
 const sha = (b: Buffer) => createHash("sha256").update(b).digest()
 const hash256 = (b: Buffer) => sha(sha(b))
 const rawHex = (s: string) => s.replace(/^0x/, "")
@@ -169,14 +167,14 @@ export default async function runCoreWitnessCheck(
       "-regtest",
       `-datadir=${dataDirectory}`,
       `-rpcport=${port}`,
-      "-rpcclienttimeout=5",
+      "-rpcclienttimeout=30",
       ...(wallet ? ["-rpcwallet=c05fixture"] : []),
       method,
       ...args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))),
     ]
     try {
       const text = execFileSync(path.join(CORE, "bitcoin-cli"), parameters, {
-        timeout: 10000,
+        timeout: 45000,
         maxBuffer: 8 * 1024 * 1024,
         stdio: ["ignore", "pipe", "pipe"],
       })
@@ -284,9 +282,12 @@ export default async function runCoreWitnessCheck(
       "Core startup must complete within the bounded readiness loop"
     )
     rpc("createwallet", ["c05fixture"])
-    const miner = rpc("getnewaddress", [], true)
-    for (let remaining = 101; remaining > 0; remaining -= 10)
-      rpc("generatetoaddress", [Math.min(10, remaining), miner])
+    // One coinbase funds the wallet. Every other block pays OP_TRUE, which the
+    // wallet does not own: a block that pays the wallet makes Core sync the
+    // wallet to disk, which dominated setup under parallel runs.
+    rpc("generatetoaddress", [1, rpc("getnewaddress", [], true)])
+    const sink = rpc("getdescriptorinfo", ["raw(51)"]).descriptor
+    rpc("generatetodescriptor", [100, sink])
     const now = Math.floor(Date.now() / 1000)
     const walletSecret = word(3n)
     const refundSecret = word(1n)
@@ -334,7 +335,7 @@ export default async function runCoreWitnessCheck(
       rpc("sendtoaddress", [address, bitcoinAmount], true),
       rpc("sendtoaddress", [address, bitcoinAmount], true),
     ]
-    const fundingBlock = rpc("generatetoaddress", [1, miner])[0]
+    const fundingBlock = rpc("generatetodescriptor", [1, sink])[0]
     const locate = (txid: string): Input => {
       const tx = rpc("getrawtransaction", [txid, true, fundingBlock])
       const vout = tx.vout.find(
@@ -381,7 +382,7 @@ export default async function runCoreWitnessCheck(
     const walletAdmission = rpc("testmempoolaccept", [[sweep]])[0]
     assert.equal(walletAdmission.allowed, true, JSON.stringify(walletAdmission))
     const sweepId = rpc("sendrawtransaction", [sweep])
-    const sweepBlock = rpc("generatetoaddress", [1, miner])[0]
+    const sweepBlock = rpc("generatetodescriptor", [1, sink])[0]
     const swept = rpc("gettxout", [sweepId, 0])
     assert(swept && swept.scriptPubKey.hex === destination.toString("hex"))
     // Archive a valid competing wallet-leaf spend of the SECOND deposit before
@@ -468,12 +469,12 @@ export default async function runCoreWitnessCheck(
     assert.equal(early.allowed, false)
     assert(early["reject-reason"] === "non-final", JSON.stringify(early))
     rpc("setmocktime", [terms.refundLocktime + 100])
-    rpc("generatetoaddress", [11, miner])
+    rpc("generatetodescriptor", [11, sink])
     assert(rpc("getblockchaininfo").mediantime > terms.refundLocktime)
     const refundAdmission = rpc("testmempoolaccept", [[refund]])[0]
     assert.equal(refundAdmission.allowed, true, JSON.stringify(refundAdmission))
     const refundId = rpc("sendrawtransaction", [refund])
-    const refundBlock = rpc("generatetoaddress", [1, miner])[0]
+    const refundBlock = rpc("generatetodescriptor", [1, sink])[0]
     assert(rpc("gettxout", [refundId, 0]))
     assert.equal(rpc("gettxout", [refundInput.txid, refundInput.index]), null)
     assert.equal(walletSigningEnabled, false)

@@ -37,7 +37,10 @@ library FrostFraud {
     uint8 internal constant AUTH_MOVEMENT = 3;
     uint8 internal constant AUTH_SELF = 4;
     uint256 internal constant MAX_INPUTS = 128;
-    uint256 internal constant MAX_OUTPUTS = 128;
+    /// @dev The largest output count a one-byte CompactSize encodes, the only
+    /// form `digest` parses, so every admitted movement can be defended
+    /// (C-08): a commitment exceeds the 2^24 transaction gas cap before it.
+    uint256 internal constant MAX_OUTPUTS = 252;
     bytes32 internal constant HEARTBEAT_TAG =
         sha256("tbtc-v2/frost-heartbeat/v1");
 

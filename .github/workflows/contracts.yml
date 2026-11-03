@@ -66,10 +66,19 @@ jobs:
         working-directory: ./solidity
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The upgrade tests rebuild the pre-FROST baseline (40a11d1d) from
+          # git history.
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
           node-version: "22.23.1"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: solidity/test/helpers/frost-digest/go.mod
+          cache: false
 
       - name: Enable Corepack (Yarn from lockfile)
         run: |
@@ -89,6 +98,14 @@ jobs:
 
       - name: Build contracts
         run: yarn build
+
+      # The Go test helpers build offline (GOPROXY=off) from their pinned
+      # modules, and the Core-backed tests run a pinned Bitcoin Core.
+      - name: Provision test dependencies
+        run: |
+          (cd test/helpers/frost-digest && go mod download all)
+          (cd test/helpers/frost-verifier-oracle && go mod download all)
+          node test/helpers/bitcoin-core/provision.cjs
 
       # We don't want to execute the tests for dapp-friendly contracts (either
       # when deploying from `dapp-development` or during PR checks on that branch).

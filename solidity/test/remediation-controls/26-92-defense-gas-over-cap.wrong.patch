@@ -1,0 +1,23 @@
+diff --git a/solidity/contracts/frost/FrostFraud.sol b/solidity/contracts/frost/FrostFraud.sol
+index 709b0839..02f22d82 100644
+--- a/solidity/contracts/frost/FrostFraud.sol
++++ b/solidity/contracts/frost/FrostFraud.sol
+@@ -37,7 +37,7 @@ library FrostFraud {
+     uint8 internal constant AUTH_MOVEMENT = 3;
+     uint8 internal constant AUTH_SELF = 4;
+     uint256 internal constant MAX_INPUTS = 128;
+-    uint256 internal constant MAX_OUTPUTS = 128;
++    uint256 internal constant MAX_OUTPUTS = 252;
+     bytes32 internal constant HEARTBEAT_TAG =
+         sha256("tbtc-v2/frost-heartbeat/v1");
+ 
+@@ -462,6 +462,9 @@ library FrostFraud {
+         uint256 total;
+         uint256[] memory values = new uint256[](n);
+         for (uint256 i = 0; i < n; i++) {
++            // Control only: about 120,000 extra gas per output.
++            uint256 start = gasleft();
++            while (start - gasleft() < 120000) {}
+             FrostWallets.Wallet storage target = self.frost.wallets[
+                 commitment.targets[i]
+             ];

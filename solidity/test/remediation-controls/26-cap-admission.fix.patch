@@ -1,0 +1,12 @@
+diff --git a/solidity/contracts/frost/FrostMovement.sol b/solidity/contracts/frost/FrostMovement.sol
+index 64fff405..8b99354e 100644
+--- a/solidity/contracts/frost/FrostMovement.sol
++++ b/solidity/contracts/frost/FrostMovement.sol
+@@ -113,6 +113,7 @@ library FrostMovement {
+         uint256 expected = movement.eligibleTargets < needed
+             ? movement.eligibleTargets
+             : needed;
++        if (expected > 128) expected = 128;
+         require(expected > 0, "FROST movement no target");
+         require(targets.length == expected, "FROST movement target count");
+         uint160 previous = 0;

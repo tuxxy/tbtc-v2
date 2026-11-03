@@ -1,0 +1,21 @@
+diff --git a/solidity/test/bridge/Frost.Identity.test.ts b/solidity/test/bridge/Frost.Identity.test.ts
+index 7e63ba4a..de327dc9 100644
+--- a/solidity/test/bridge/Frost.Identity.test.ts
++++ b/solidity/test/bridge/Frost.Identity.test.ts
+@@ -161,6 +161,16 @@ async function forceCollisionState(bridge: any, frost: boolean, label: string) {
+ }
+ 
+ describe("FROST immutable identity and inactive Bridge", () => {
++  // CONTROL ONLY (27-host-artifact.wrong): a hard-coded host artifact that
++  // neither the repository nor its workflow provisions.
++  before(() => {
++    // eslint-disable-next-line global-require
++    const { readFileSync } = require("fs")
++    // eslint-disable-next-line global-require
++    const { userInfo } = require("os")
++    readFileSync(`${userInfo().homedir}/.tbtc-portability-sentinel`)
++  })
++
+   it("keeps legacy identity, callback authority, exact output routing, and tombstones distinct", async () => {
+     const { admin, other, bridge, frost } = await fixture()
+     const registry = await deploy(

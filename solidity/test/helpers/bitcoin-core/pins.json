@@ -1,0 +1,30 @@
+{
+  "version": "29.0",
+  "source": "https://bitcoincore.org/bin/bitcoin-core-29.0/",
+  "platforms": {
+    "darwin-arm64": {
+      "archive": "bitcoin-29.0-arm64-apple-darwin.tar.gz",
+      "archiveSha256": "34431c582a0399dd42e1276d87d25306cbdde0217f6744bd55a2945986645dda",
+      "bitcoindSha256": "f4b9d78a74643c726d022840ca506dc317d41f8825aaef80b7bb705e12c5fda8",
+      "bitcoinCliSha256": "69437b987b4ad3aef1f478a3091d8e0032cb4183cd14d096982b292a2ba13ea1"
+    },
+    "darwin-x64": {
+      "archive": "bitcoin-29.0-x86_64-apple-darwin.tar.gz",
+      "archiveSha256": "5bb824fc86a15318d6a83a1b821ff4cd4b3d3d0e1ec3d162b805ccf7cae6fca8",
+      "bitcoindSha256": "92473ef00f072753477e0b4b45e840faf11aaaae93ff274a852bcc0709d866d1",
+      "bitcoinCliSha256": "906916ba3ce410856851343c7b04b3569e8aafb1734b3f9142a66b6b17d927fa"
+    },
+    "linux-x64": {
+      "archive": "bitcoin-29.0-x86_64-linux-gnu.tar.gz",
+      "archiveSha256": "a681e4f6ce524c338a105f214613605bac6c33d58c31dc5135bbc02bc458bb6c",
+      "bitcoindSha256": "e91640d84f5dbaaa0934831dc21e9e72434cec57359cb83cb75b877a81bf2794",
+      "bitcoinCliSha256": "58df490e9c98e802c8165a88e794c0abcd8f9dcc8439a2b46eac62b2875fecbe"
+    },
+    "linux-arm64": {
+      "archive": "bitcoin-29.0-aarch64-linux-gnu.tar.gz",
+      "archiveSha256": "7922ac99363dd28f79e57ef7098581fd48ebd1119b412b07e73b1fd19fd0443f",
+      "bitcoindSha256": "4bf6f26571112e32f2d0c30e15ea8344b396a30eb614c4442f766954b253e7e6",
+      "bitcoinCliSha256": "4c09997be7f2597e58175eefe46f3f1b9a69e960ddf64e23444d6da2a771a5e8"
+    }
+  }
+}
