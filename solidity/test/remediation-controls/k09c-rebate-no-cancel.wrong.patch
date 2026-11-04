@@ -1,0 +1,30 @@
+diff --git a/solidity/contracts/bridge/Redemption.sol b/solidity/contracts/bridge/Redemption.sol
+index 584401a2..8a49e327 100644
+--- a/solidity/contracts/bridge/Redemption.sol
++++ b/solidity/contracts/bridge/Redemption.sol
+@@ -1161,12 +1161,6 @@ library Redemption {
+         self.timedOutRedemptions[redemptionKey] = request;
+         delete self.pendingRedemptions[redemptionKey];
+ 
+-        if (self.rebateStaking != address(0)) {
+-            RebateStaking(self.rebateStaking).cancelRebate(
+-                request.redeemer,
+-                request.requestedAt
+-            );
+-        }
+ 
+         // slither-disable-next-line reentrancy-events
+         emit RedemptionTimedOut(walletPubKeyHash, redeemerOutputScript);
+@@ -1279,12 +1273,6 @@ library Redemption {
+         // release the corresponding rolling-window cap entry. When no rebate
+         // was applied (unauthorized callback, or rebate staking unset), the
+         // call is a safe no-op.
+-        if (self.rebateStaking != address(0)) {
+-            RebateStaking(self.rebateStaking).cancelRebate(
+-                redemption.redeemer,
+-                redemption.requestedAt
+-            );
+-        }
+ 
+         self.bank.transferBalance(self.redemptionWatchtower, detainedAmount);
+     }

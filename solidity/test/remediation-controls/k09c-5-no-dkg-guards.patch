@@ -1,0 +1,23 @@
+diff --git a/solidity/contracts/frost/FrostExposure.sol b/solidity/contracts/frost/FrostExposure.sol
+index 26a2c845..915f93af 100644
+--- a/solidity/contracts/frost/FrostExposure.sol
++++ b/solidity/contracts/frost/FrostExposure.sol
+@@ -147,18 +147,6 @@ library FrostExposure {
+                 self.frost.registry != address(0),
+                 "FROST cutover registry"
+             );
+-            require(
+-                self.ecdsaWalletRegistry.getWalletCreationState() ==
+-                    EcdsaDkg.State.IDLE,
+-                "Legacy DKG not idle"
+-            );
+-            require(
+-                !ILegacyDkgPool(
+-                    ILegacyDkgPool(address(self.ecdsaWalletRegistry))
+-                        .sortitionPool()
+-                ).isLocked(),
+-                "Legacy sortition pool locked"
+-            );
+             exposure.creationMode = FrostExposureState.FROST_ONLY;
+             exposure.cutoverManifest = manifestHash;
+             emit FrostCutoverCompleted(manifestHash);
