@@ -1,0 +1,60 @@
+diff --git a/solidity/contracts/frost/FrostLifecycle.sol b/solidity/contracts/frost/FrostLifecycle.sol
+index 7db6ca7b..bfc110a7 100644
+--- a/solidity/contracts/frost/FrostLifecycle.sol
++++ b/solidity/contracts/frost/FrostLifecycle.sol
+@@ -395,7 +395,6 @@ library FrostLifecycle {
+             !movement.lifecycles[id].dust
+         ) open |= 1;
+         if (movement.pendingIncoming[id] != 0) open |= 2;
+-        if (movement.inboundCommitments[id] != 0) open |= 4;
+         if (commitment.mainOutpoint != bytes32(0) && commitment.provenAt == 0)
+             open |= 8;
+         if (self.frostRedemptions.ledger.escrow[id] != 0) open |= 32;
+diff --git a/solidity/contracts/frost/FrostMovement.sol b/solidity/contracts/frost/FrostMovement.sol
+index 8225416f..d04dca55 100644
+--- a/solidity/contracts/frost/FrostMovement.sol
++++ b/solidity/contracts/frost/FrostMovement.sol
+@@ -96,7 +96,7 @@ library FrostMovement {
+                 !movement.lifecycles[walletId].dust,
+             "FROST movement committed"
+         );
+-        requireClear(self, walletId);
++        requireClear(self, walletId, false);
+         FrostCustody.Wallet storage custody = self.frostCustody.wallets[
+             walletId
+         ];
+@@ -569,7 +569,7 @@ library FrostMovement {
+                 value < self.movingFundsDustThreshold,
+             "FROST movement dust state"
+         );
+-        requireClear(self, walletId);
++        requireClear(self, walletId, true);
+         lifecycle.dust = true;
+         // A terminated wallet records its dust and stays Terminated.
+         if (wallet.state == FrostWallets.State.MovingFunds) {
+@@ -716,10 +716,11 @@ library FrostMovement {
+     }
+ 
+     /// @dev Obligations that block a commitment or a dust closure.
+-    function requireClear(BridgeState.Storage storage self, bytes32 walletId)
+-        private
+-        view
+-    {
++    function requireClear(
++        BridgeState.Storage storage self,
++        bytes32 walletId,
++        bool inbound
++    ) private view {
+         // Revealed deposits do not block: a reveal is unproven on Bitcoin and
+         // its refund time is the depositor's choice, so it cannot hold the
+         // wallet. A late sweep of a real deposit reopens the wallet instead.
+@@ -728,7 +729,8 @@ library FrostMovement {
+                 bytes32(0) &&
+                 self.frostRedemptions.ledger.escrow[walletId] == 0 &&
+                 self.frostMovement.pendingIncoming[walletId] == 0 &&
+-                self.frostMovement.inboundCommitments[walletId] == 0,
++                (!inbound ||
++                    self.frostMovement.inboundCommitments[walletId] == 0),
+             "FROST movement obligations"
+         );
+     }

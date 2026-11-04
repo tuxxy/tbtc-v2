@@ -1,0 +1,28 @@
+diff --git a/solidity/contracts/bridge/Bridge.sol b/solidity/contracts/bridge/Bridge.sol
+index c585b447..676004e5 100644
+--- a/solidity/contracts/bridge/Bridge.sol
++++ b/solidity/contracts/bridge/Bridge.sol
+@@ -2043,6 +2043,8 @@ contract Bridge is
+     ///      part of the rebate mechanism wiring governed by the
+     ///      Bridge governance contract. See the bridge rebate
+     ///      governance deployment runbook for operational details.
++    ///      While it is set, FROST deposit reveals are refused ("FROST
++    ///      rebate unsupported"); FROST deposits need it unset.
+     function setRebateStaking(address rebateStaking) external onlyGovernance {
+         self.setRebateStaking(rebateStaking);
+     }
+diff --git a/solidity/contracts/frost/IFrostFundingBridge.sol b/solidity/contracts/frost/IFrostFundingBridge.sol
+index 27d15d6a..b13dbbdf 100644
+--- a/solidity/contracts/frost/IFrostFundingBridge.sol
++++ b/solidity/contracts/frost/IFrostFundingBridge.sol
+@@ -37,6 +37,10 @@ interface IFrostFundingBridge {
+         view
+         returns (FrostDepositAdmission.Construction memory);
+ 
++    /// @notice Reveals a FROST deposit.
++    /// @dev Governance precondition: RebateStaking must be unset before FROST
++    ///      deposits open. While the Bridge has a RebateStaking address, every
++    ///      FROST reveal reverts with "FROST rebate unsupported".
+     function revealFrostDeposit(
+         FrostDepositProfile.Terms calldata terms,
+         BitcoinTx.Info calldata transaction,
