@@ -739,9 +739,10 @@ describe("K-09 legacy obligations across upgrade, cutover and containment (tbtc-
         true
       )
       // No further ECDSA wallet can be requested after the cutover.
-      await expect(l.bridge.requestNewWallet(NO_MAIN)).to.be.revertedWith(
-        "Legacy wallet creation closed"
-      )
+      await expect(
+        l.bridge.requestNewWallet(NO_MAIN),
+        "no ECDSA request after the cutover"
+      ).to.be.revertedWith("Legacy wallet creation closed")
       expect(await l.registry.getWalletCreationState()).to.equal(0)
       await expectChanged([])
     }
