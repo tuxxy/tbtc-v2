@@ -1,0 +1,17 @@
+diff --git a/solidity/contracts/bridge/Wallets.sol b/solidity/contracts/bridge/Wallets.sol
+index 1e9c5b09..a0a579c1 100644
+--- a/solidity/contracts/bridge/Wallets.sol
++++ b/solidity/contracts/bridge/Wallets.sol
+@@ -218,12 +218,6 @@ library Wallets {
+         // C-10: in LegacyDraining only the DKG in flight when the drain
+         // began may finish, once; none after the cutover.
+         FrostExposureState.Storage storage exposure = self.frostExposure;
+-        require(
+-            exposure.creationMode == FrostExposureState.LEGACY_OPEN ||
+-                (exposure.creationMode == FrostExposureState.LEGACY_DRAINING &&
+-                    exposure.legacyDkgInFlight),
+-            "Legacy wallet creation closed"
+-        );
+         exposure.legacyDkgInFlight = false;
+ 
+         require(FrostCurve.validPoint(publicKeyX, publicKeyY), "Invalid ECDSA curve point");

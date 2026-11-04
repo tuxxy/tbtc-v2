@@ -1,0 +1,12 @@
+diff --git a/solidity/contracts/frost/FrostExposureController.sol b/solidity/contracts/frost/FrostExposureController.sol
+index 9e0e768b..1c573f11 100644
+--- a/solidity/contracts/frost/FrostExposureController.sol
++++ b/solidity/contracts/frost/FrostExposureController.sol
+@@ -167,7 +167,6 @@ contract FrostExposureController is IFrostExposureController {
+         uint64 custody,
+         uint64 issuance
+     ) external override onlyBridge {
+-        require(!contained, "FROST exposure contained");
+         Reservation storage r = reservations[id];
+         require(id != bytes32(0) && r.state == 0, "Exposure reserved");
+         add(custody, issuance);

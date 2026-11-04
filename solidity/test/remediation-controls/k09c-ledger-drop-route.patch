@@ -1,0 +1,12 @@
+diff --git a/solidity/test/k09/obligation-ledger.ts b/solidity/test/k09/obligation-ledger.ts
+index 8ad4134b..07af566e 100644
+--- a/solidity/test/k09/obligation-ledger.ts
++++ b/solidity/test/k09/obligation-ledger.ts
+@@ -42,7 +42,6 @@ export const CLASSES: ObligationClass[] = [
+     routes: [
+       { id: "redemption-proof", entrypoint: "submitRedemptionProof" },
+       { id: "redemption-timeout", entrypoint: "notifyRedemptionTimeout" },
+-      { id: "redemption-veto", entrypoint: "notifyRedemptionVeto" },
+     ],
+   },
+   {

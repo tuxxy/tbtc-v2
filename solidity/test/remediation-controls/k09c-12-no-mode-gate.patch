@@ -1,0 +1,16 @@
+diff --git a/solidity/contracts/bridge/Wallets.sol b/solidity/contracts/bridge/Wallets.sol
+index 1e9c5b09..b7302af7 100644
+--- a/solidity/contracts/bridge/Wallets.sol
++++ b/solidity/contracts/bridge/Wallets.sol
+@@ -152,11 +152,6 @@ library Wallets {
+         BitcoinTx.UTXO calldata activeWalletMainUtxo
+     ) external {
+         // C-10: no new ECDSA request once the legacy DKG drain has begun.
+-        require(
+-            self.frostExposure.creationMode ==
+-                FrostExposureState.LEGACY_OPEN,
+-            "Legacy wallet creation closed"
+-        );
+         require(
+             self.ecdsaWalletRegistry.getWalletCreationState() ==
+                 EcdsaDkg.State.IDLE,

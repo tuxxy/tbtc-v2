@@ -1,0 +1,12 @@
+diff --git a/solidity/contracts/frost/FrostLifecycle.sol b/solidity/contracts/frost/FrostLifecycle.sol
+index 7db6ca7b..dbfe322d 100644
+--- a/solidity/contracts/frost/FrostLifecycle.sol
++++ b/solidity/contracts/frost/FrostLifecycle.sol
+@@ -372,7 +372,6 @@ library FrostLifecycle {
+             block.timestamp > since + self.walletClosingPeriod,
+             "FROST closing period"
+         );
+-        require(obligations(self, id) == 0, "FROST closure obligations");
+         wallet.state = FrostWallets.State.Closed;
+         emit FrostWalletClosed(id);
+     }
