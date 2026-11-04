@@ -77,11 +77,23 @@ describe("K-09 legacy obligations across upgrade, cutover and containment (tbtc-
   })
 
   /// Runs a witness of `route` and records it only if every assertion held.
-  const witness = (route: string, title: string, body: () => Promise<void>) =>
-    it(`[${route}] ${title}`, async () => {
+  const witness = (
+    route: string | string[],
+    title: string,
+    body: () => Promise<void>
+  ) =>
+    it(`[${[route].flat().join(", ")}] ${title}`, async () => {
       await body()
-      witnessed.add(route)
+      ;[route].flat().forEach((r) => witnessed.add(r))
     })
+  /// The rebater's rebate entries: [T's request, V's request].
+  const rebates = async () => ({
+    available: (
+      await l.rebate.getAvailableRebate(l.rebater.address)
+    ).toNumber(),
+    t: (await l.rebate.getRebate(l.rebater.address, 0)).feeRebate.toNumber(),
+    v: (await l.rebate.getRebate(l.rebater.address, 1)).feeRebate.toNumber(),
+  })
   const expectChanged = async (keys: string[]) =>
     expect(
       changedKeys(start, await ledgerFrame(l)),
@@ -130,6 +142,22 @@ describe("K-09 legacy obligations across upgrade, cutover and containment (tbtc-
       expect(deposit.revealedAt).to.be.greaterThan(0)
       expect(deposit.sweptAt).to.equal(0)
     }
+    // RebateStaking applied the rebater's rebates on 40a11d1d.
+    expect(
+      (
+        await l.bridge.pendingRedemptions(
+          redemptionKey(l.wallets.T.pkh, l.scripts.T)
+        )
+      ).treasuryFee
+    ).to.equal(0)
+    expect(
+      (
+        await l.bridge.pendingRedemptions(
+          redemptionKey(l.wallets.R.pkh, l.scripts.V)
+        )
+      ).treasuryFee
+    ).to.equal(200)
+    expect(await l.bridge.getRebateStaking()).to.equal(l.rebate.address)
     // The proxy now runs this checkout's Bridge.
     expect(await l.admin.getProxyImplementation(l.proxy.address)).to.equal(
       l.implementation.address
@@ -237,8 +265,8 @@ describe("K-09 legacy obligations across upgrade, cutover and containment (tbtc-
         ).requestedAt
       ).to.equal(0)
       const r = await wallet("R")
-      // The vetoable second request is still pending.
-      expect(r.pendingRedemptionsValue).to.equal(RED_AMOUNT - RED_AMOUNT / 100)
+      // The vetoable second request (rebated fee 200) is still pending.
+      expect(r.pendingRedemptionsValue).to.equal(RED_AMOUNT - 200)
       expect(r.mainUtxoHash).to.equal(
         utxoHash({
           txHash: tx.hash,
@@ -262,11 +290,16 @@ describe("K-09 legacy obligations across upgrade, cutover and containment (tbtc-
   )
 
   witness(
-    "redemption-timeout",
-    "times out a pending redemption after the cutover and containment",
+    ["redemption-timeout", "rebate-release-timeout"],
+    "times out a pending rebated redemption after the cutover and containment and releases its rebate",
     async () => {
       await increaseTime(REDEMPTION_TIMEOUT + 1)
-      const alias = await l.bank.balanceOf(l.alias.address)
+      expect(await rebates(), "rebates before").to.deep.equal({
+        available: 0,
+        t: 400,
+        v: 200,
+      })
+      const rebater = await l.bank.balanceOf(l.rebater.address)
       await discharges(
         "redemption-timeout",
         l.bridge
@@ -280,25 +313,33 @@ describe("K-09 legacy obligations across upgrade, cutover and containment (tbtc-
       const key = redemptionKey(l.wallets.T.pkh, l.scripts.T)
       expect((await l.bridge.pendingRedemptions(key)).requestedAt).to.equal(0)
       expect(
-        (await l.bridge.timedOutRedemptions(key)).requestedAt
+        (await l.bridge.timedOutRedemptions(key)).requestedAt,
+        "timed-out record kept"
       ).to.be.greaterThan(0)
       expect((await wallet("T")).state).to.equal(LegacyState.MovingFunds)
-      expect((await l.bank.balanceOf(l.alias.address)).sub(alias)).to.equal(
+      expect((await l.bank.balanceOf(l.rebater.address)).sub(rebater)).to.equal(
         RED_AMOUNT
       )
+      // RebateStaking.cancelRebate: T's entry no longer counts in the window.
+      expect(await rebates(), "rebate released on timeout").to.deep.equal({
+        available: 400,
+        t: 0,
+        v: 200,
+      })
       await expectChanged([
         "pending:T",
         "timedOut:T",
         "wallet:T",
-        "bank:alias",
+        "bank:rebater",
         "bank:bridge",
+        "rebate:rebater",
       ])
     }
   )
 
   witness(
-    "redemption-veto",
-    "vetoes a pending redemption through the watchtower after the cutover and containment",
+    ["redemption-veto", "rebate-release-veto"],
+    "vetoes a pending rebated redemption through the watchtower after the cutover and containment and releases its rebate",
     async () => {
       const tower = await l.bank.balanceOf(l.tower.address)
       const [g1, g2, g3] = l.guardians
@@ -315,6 +356,11 @@ describe("K-09 legacy obligations across upgrade, cutover and containment (tbtc-
       expect((await wallet("R")).pendingRedemptionsValue).to.equal(
         RED_AMOUNT - RED_AMOUNT / 100
       )
+      expect(await rebates(), "rebate released on veto").to.deep.equal({
+        available: 200,
+        t: 400,
+        v: 0,
+      })
       // The Bridge detains the whole requested amount in the watchtower, which
       // burns its penalty and keeps the redeemer's withdrawable rest.
       const veto = await l.tower.vetoProposals(key)
@@ -327,6 +373,7 @@ describe("K-09 legacy obligations across upgrade, cutover and containment (tbtc-
         "veto:V",
         "wallet:R",
         "bank:bridge",
+        "rebate:rebater",
         ...(veto.withdrawableAmount.gt(0) ? ["bank:tower"] : []),
       ])
     }

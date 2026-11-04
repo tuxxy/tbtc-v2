@@ -289,20 +289,49 @@ async function ledgerFixture() {
     )
   await commit("A", "B")
 
-  // Pending redemptions created now: R (proof), T (timeout through
-  // receiveBalanceApproval, the Bank approve-and-call creator), and R's
-  // second request, vetoed after the cutover.
+  // RebateStaking, live on mainnet: the real contract (unchanged since
+  // 40a11d1d) behind a proxy, set on the 40a11d1d Bridge before the
+  // requests. 1 T of stake per satoshi of rebate, 30-day window. `rebater`
+  // stakes 600 T (a 600-sat cap) for redemption fees only.
+  const rebate = await (async () => {
+    const implementation = await deploy("RebateStaking")
+    const proxy = await deploy("TransparentUpgradeableProxy", [
+      implementation.address,
+      w.admin.address,
+      implementation.interface.encodeFunctionData("initialize", [
+        legacy.address,
+        w.t.address,
+        30 * 86400,
+        30 * 86400,
+        ethers.utils.parseEther("1"),
+      ]),
+    ])
+    return implementation.attach(proxy.address)
+  })()
+  await legacy.setRebateStaking(rebate.address)
+  const { rebater } = w
+  const stake = ethers.utils.parseEther("600")
+  await w.t.connect(w.deployer).mint(rebater.address, stake)
+  await w.t.connect(rebater).approve(rebate.address, stake)
+  await rebate.connect(rebater).stake(stake)
+  await rebate.connect(rebater).setRebateTreasuryFeeMode(2) // RedemptionOnly
+  await w.bank.connect(alias).transferBalance(rebater.address, 2 * RED_AMOUNT)
+
+  // Pending redemptions created now: R (proof; alias, no rebate), T
+  // (timeout; rebater through receiveBalanceApproval, the Bank
+  // approve-and-call creator: rebate 400 of the 400-sat fee) and R's second
+  // request (veto; rebater: rebate 200, the rest of the cap).
   const rScript = await request("R", 1)
   const tScript = script(2)
   await w.bank
-    .connect(alias)
+    .connect(rebater)
     .approveBalanceAndCall(
       legacy.address,
       RED_AMOUNT,
       ethers.utils.defaultAbiCoder.encode(
         ["address", "bytes20", "bytes32", "uint32", "uint64", "bytes"],
         [
-          alias.address,
+          rebater.address,
           wallets.T.pkh,
           mains.T?.txHash,
           0,
@@ -311,9 +340,11 @@ async function ledgerFixture() {
         ]
       )
     )
-  // approveBalanceAndCall replaced the allowance; approve the last request.
-  await w.bank.connect(alias).approveBalance(legacy.address, RED_AMOUNT)
-  const vScript = await request("R", 4)
+  const vScript = script(4)
+  await w.bank.connect(rebater).approveBalance(legacy.address, RED_AMOUNT)
+  await legacy
+    .connect(rebater)
+    .requestRedemption(wallets.R.pkh, mains.R, vScript, RED_AMOUNT)
 
   // D: two revealed, never swept deposits (plain and with extra data).
   const d1 = await revealTo(wallets.D, 50000)
@@ -448,6 +479,7 @@ async function ledgerFixture() {
     bridge,
     frost,
     tower,
+    rebate,
     genesis,
     wallets,
     mains: mains as Record<Name, Utxo>,
@@ -514,8 +546,22 @@ export async function ledgerFrame(l: LedgerWorld) {
     "sweepRequest:A3",
     await l.bridge.movedFundsSweepRequests(outpoint(l.a3Movement.hash, 0))
   )
+  put("rebate:rebater", [
+    await l.rebate.getAvailableRebate(l.rebater.address),
+    await Promise.all(
+      Array.from(
+        {
+          length: (
+            await l.rebate.getRebateLength(l.rebater.address)
+          ).toNumber(),
+        },
+        (_, i) => l.rebate.getRebate(l.rebater.address, i)
+      )
+    ),
+  ])
   for (const [k, a] of Object.entries({
     alias: l.alias.address,
+    rebater: l.rebater.address,
     treasury: l.treasury.address,
     bridge: l.bridge.address,
     tower: l.tower.address,

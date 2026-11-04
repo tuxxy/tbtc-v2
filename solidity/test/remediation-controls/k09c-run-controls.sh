@@ -17,7 +17,9 @@ files_for() {
       echo test/k09/K09.RegistryCutover.test.ts ;;
     k09c-12-no-admission-gate.patch | k09c-11-no-closure-obligations.patch)
       echo test/k09/K09.CutoverInvariants.test.ts ;;
-    k09c-12-no-reserve-gate.patch | k09c-4-contained-blocks-legacy-sweep.wrong.patch | k09c-ledger-*.patch)
+    k09c-12-no-reserve-gate.patch)
+      echo test/k09/K09.LegacyObligations.test.ts test/k09/K09.CutoverInvariants.test.ts ;;
+    k09c-4-contained-blocks-legacy-sweep.wrong.patch | k09c-ledger-*.patch | k09c-rebate-no-cancel.wrong.patch)
       echo test/k09/K09.LegacyObligations.test.ts ;;
     *)
       echo test/k09/K09.RegistryCutover.test.ts test/k09/K09.LegacyObligations.test.ts test/k09/K09.CutoverInvariants.test.ts ;;
@@ -37,13 +39,17 @@ test -z "$(git status --porcelain -- .)" || { echo "scratch checkout is dirty" >
 for p in "${patches[@]}"; do
   echo "== $p"
   git -C "$(git rev-parse --show-toplevel)" apply "$here/$p"
-  if git diff --name-only -- contracts | grep -q .; then
+  touched=$(git diff --name-only -- contracts)
+  if [ -n "$touched" ]; then
     npx hardhat compile --quiet > "$logs/$p.compile.log" 2>&1
   fi
   # shellcheck disable=SC2046
   npx hardhat test --no-compile $(files_for "$p") > "$logs/$p.log" 2>&1 || true
   grep -E "^ +[0-9]+ (passing|failing|pending)|AssertionError" "$logs/$p.log" | cut -c1-240 || true
   git checkout -- .
+  # A contract patch leaves its build behind: rebuild the head before the
+  # next patch runs (test-only patches run on --no-compile).
+  if [ -n "$touched" ]; then
+    npx hardhat compile --quiet > "$logs/$p.restore.compile.log" 2>&1
+  fi
 done
-# Leave the scratch build matching its head.
-npx hardhat compile --quiet > "$logs/restore.compile.log" 2>&1

@@ -46,6 +46,17 @@ export const CLASSES: ObligationClass[] = [
     ],
   },
   {
+    id: "redemption-rebate",
+    what: "a RebateStaking entry the Bridge applied for a pending redemption",
+    creators: ["requestRedemption", "receiveBalanceApproval"],
+    storage: [],
+    states: [],
+    routes: [
+      { id: "rebate-release-timeout", entrypoint: "notifyRedemptionTimeout" },
+      { id: "rebate-release-veto", entrypoint: "notifyRedemptionVeto" },
+    ],
+  },
+  {
     id: "timed-out-redemption",
     what: "a timed-out request the wallet may still pay",
     creators: ["notifyRedemptionTimeout"],
@@ -181,7 +192,8 @@ export const NOT_OBLIGATIONS: Record<string, string> = {
   updateWalletParameters: "governance configuration",
   updateFraudParameters: "governance configuration",
   updateTreasury: "governance configuration",
-  setRebateStaking: "governance configuration",
+  setRebateStaking:
+    "governance configuration (the rebate entries it enables are class redemption-rebate)",
   setRedemptionWatchtower: "governance configuration",
   // Storage mappings that record facts, not owed actions.
   isVaultTrusted: "configuration",

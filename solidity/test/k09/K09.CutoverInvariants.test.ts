@@ -163,17 +163,33 @@ describe("K-09 cutover and containment invariants in the composed state (keep-co
   })
 
   // keep-core#32 (K09-12): the containment step's negative witness.
-  it("[K09-12] refuses a new FROST deposit under containment with the controller's reason and the full frame unchanged; the same reveal passes once lifted", async () => {
+  it("[K09-12] refuses new FROST exposure under containment with the controller's reason and the full frame unchanged; the same actions pass containment once lifted", async () => {
+    const m = l.wallets.M
+    const drain = () =>
+      l.bridge
+        .connect(m.signers[0])
+        .submitMovingFundsCommitment(m.pkh, l.mains.M, m.members, 1, [
+          l.frostWallet.label,
+        ])
     const before = await fullFrame()
     await expect(revealIntoQ(), "containment refusal").to.be.revertedWith(
       "FROST exposure contained"
     )
-    expect(await fullFrame(), "full frame after the refusal").to.deep.equal(
+    await expect(drain(), "containment refuses the drain").to.be.revertedWith(
+      "FROST exposure contained"
+    )
+    expect(await fullFrame(), "full frame after the refusals").to.deep.equal(
       before
     )
-    // Positive twin: nothing else stood in the way of that reveal.
+    // Positive twins. The drain commits. The reveal passes containment and
+    // stops at the next check: FROST reveals are refused while RebateStaking
+    // is set (C-05; rebate activation is C-11, DEFERRALS.md).
     await l.exposure.lift(ethers.utils.id("K09-12 lift"))
-    await expect(revealIntoQ(), "the same reveal after lift").to.not.be.reverted
+    await expect(drain(), "the same drain after lift").to.not.be.reverted
+    await expect(
+      revealIntoQ(),
+      "the same reveal after lift"
+    ).to.be.revertedWith("FROST rebate unsupported")
   })
 
   // keep-core#31 (K09-11): closure with an open challenge.

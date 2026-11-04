@@ -198,7 +198,7 @@ async function worldFixture() {
   const unnamed = (await helpers.signers.getUnnamedSigners()).filter(
     (s) => s.address !== signer0.address
   )
-  expect(unnamed.length).to.be.at.least(5 * OPERATORS + 8)
+  expect(unnamed.length).to.be.at.least(5 * OPERATORS + 9)
   const roles = (i: number) => unnamed.slice(5 * i, 5 * i + 5)
   const all = Array.from({ length: OPERATORS }, (_, i) => roles(i))
   // Independent signers' transactions are sent together (automine still
@@ -241,9 +241,10 @@ async function worldFixture() {
   // Actors come from the end of the signer list, apart from every operator
   // role. `alias` is one account acting as depositor, redeemer, fraud
   // challenger and permissionless notifier (aliased actors, KC-SF-V3 K-09).
+  // `rebater` is a redeemer staking in RebateStaking.
   const owner = signer0
-  const [alias, treasury, maintainer, keeper, manager, g1, g2, g3] =
-    unnamed.slice(-8)
+  const [rebater, alias, treasury, maintainer, keeper, manager, g1, g2, g3] =
+    unnamed.slice(-9)
   const depositor = alias
   const challenger = alias
   const build = await legacyBaselineBuild(path.resolve(__dirname, "../../.."))
@@ -362,6 +363,7 @@ async function worldFixture() {
   return {
     owner,
     alias,
+    rebater,
     depositor,
     treasury,
     maintainer,
@@ -375,6 +377,7 @@ async function worldFixture() {
     registryGovernance,
     sortitionPool,
     staking,
+    t,
     pool,
     beacon,
     bank,
