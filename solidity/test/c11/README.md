@@ -7,12 +7,14 @@ Brief and record: `K-09-restart/TESTS-C11.md`. Decisions: D1, D20, D21 (a), D22 
 
 ```sh
 cd solidity
-test/c11/run.sh            # Frost.Upgrade + deploy test 85
+test/c11/run.sh
 ```
 
-`run.sh` sets `TMPDIR` to `solidity/.c11-tmp` (the 40a11d1d baseline builds write there), and `USE_EXTERNAL_DEPLOY=true TEST_USE_STUBS_TBTC=true` as `yarn test` does. Run the files together: the class-coverage case reads the witnesses of the three discharge cases in the same run. `C11_TIMING=1` prints each case's duration.
+`run.sh` compiles once, then runs two hardhat processes in parallel (`--no-compile`), each with its own `TMPDIR` under `solidity/.c11-tmp/` (the 40a11d1d baseline builds write there) and each under 2 min:
+- A: `Frost.Upgrade.test.ts` (properties 1, 2, 3, 4, 6, 7, 8 and the derivation);
+- B: `Frost.Upgrade.Governance.test.ts` (property 5) and deploy test 85.
 
-Fresh-worktree environment: symlink `solidity/node_modules` as the other tbtc-v2 worktrees do; nothing else. The baseline (`40a11d1d`) is read from git, so the checkout must contain that commit.
+Logs are `.c11-tmp/run-A.log` and `.c11-tmp/run-B.log`. The env is as `yarn test` sets it. The class-coverage case in A reads the witnesses of the three discharge cases in the same run, so don't `--grep` it alone. `C11_TIMING=1` prints each case's duration. Shared fixtures, recipes and probes live in `test/c11/c11-cases.ts`.
 
 ## The world
 
@@ -56,7 +58,15 @@ type Step =
   | { kind: "wait"; seconds; description }                                                     // e.g. the BridgeGovernance delay
 ```
 
-The deploy phase runs from the named `deployer`. The deployer holds no role afterwards. The D22 forwarders are on `BridgeGovernance` (this checkout), one per governance-guarded FROST entrypoint, with the Bridge function's name and types, `onlyOwner` and immediate.
+The deploy phase runs from the named `deployer`. The deployer holds no role afterwards. The D22 forwarders are on `BridgeGovernance` (this checkout), one per governance-guarded FROST entrypoint, with the Bridge function's name and types, `onlyOwner` and immediate; each forwards every argument unchanged (the cases check every argument's effect and the Bridge event, and run on/off switches both ways). The new BridgeGovernance's governance delay equals the old one's.
+
+During the steps, only these events may be emitted, and only by these contracts (anything else fails `bundle steps emit only the named events`):
+- the Bridge proxy: `Upgraded` (to the bundle's implementation), `Initialized`, `GovernanceTransferred`;
+- the old BridgeGovernance: `BridgeGovernanceTransferStarted`;
+- the Timelock: `CallScheduled`, `CallExecuted`, `CallSalt`;
+- nothing from the new BridgeGovernance or the ProxyAdmin.
+
+The Timelock's min delay must be unchanged. A reinitializer, if any, is detected by the Bridge's `_initialized` slot, not by its name: it must reach a version above 5 (and above the previous one), in the same step as the upgrade, through `ProxyAdmin.upgradeAndCall`, and emit nothing beyond `Initialized`.
 
 ## Cases (`Frost.Upgrade.test.ts`)
 
@@ -65,13 +75,14 @@ The deploy phase runs from the named `deployer`. The deployer holds no role afte
 | interface | `[C-11 interface]` | `C-11 bundle builder present` |
 | 5 derivation (#57) | `[#57, D22]` | `no BridgeGovernance route for abortLegacyDkgDrain(bytes32)` |
 | 1 authority route | `[1 authority] ... only through Timelock -> ProxyAdmin ...` | `C-11 bundle builder present` |
+| 1, 3 side effects | `[1, 3 side effects]` (events, delays, roles) | same |
 | 2 window | `[2 window]` | same |
 | 2 initializer | `[2 initialization]` | same |
 | 1 after the bundle | `[1 authority] after the bundle ...` | same |
 | 3 frame | `[3 legacy] the whole frame ...` | same |
 | 3 discharges | three `[3 legacy] ... discharged after the bundle` cases, plus `every legacy obligation class` | same |
 | 4 G-D | `[4 G-D]` | same |
-| 5 per entrypoint | 13 `[5 #57] <fn>` cases | same |
+| 5 per entrypoint (file B) | 13 `[5 #57] <fn>` cases: every argument, both directions | same |
 | 5 runbook | `[5 runbook]` (two cases), `[5 emergency]` | same |
 | 6 bytecode | `[6 bytecode, #56]` | same |
 | 7 verifier | `[7 verifier]` | same |
@@ -96,5 +107,10 @@ The deploy phase runs from the named `deployer`. The deployer holds no role afte
 | `c11-7-wrong-verifier.wrong.ts` | verifier not the FrostVerifier artifact | `bundle verifier is the FrostVerifier artifact` |
 | `c11-7-no-codehash-check` (edit) | install accepts any code hash | `mismatched verifier code hash refused (hash of other code): not refused` |
 | `c11-8-wrong-rollback.wrong.ts` | wrong rollback target | `rollback target is the pre-bundle implementation` |
+| `c11-3-trust-vault.wrong.ts` | the bundle trusts a new vault | `bundle steps emit only the named events` |
+| `c11-1-timelock-weaken.wrong.ts` | Timelock delay shortened, proposer granted | `bundle steps emit only the named events` |
+| `c11-1-short-governance-delay.wrong.ts` | new BridgeGovernance with a 1 s delay | `new BridgeGovernance governance delay equals the old one's` |
 
-Not controlled: the 24,576-byte size bound (no builder variant can change code size); the reinitializer branch of `[2 initialization]` (only runs if the implementation adds a reinitializer).
+Forwarders that swap arguments or cannot close a switch are implementation edits; the review's probes `W-forwarder-arg-swaps` and `W-forwarder-cannot-close` (`K-09-restart/rv-c11-20261105/probes/`) fail at `<fn>(<args>): <event>.<arg> carries the argument`.
+
+Not controlled: the 24,576-byte size bound (no builder variant can change code size); the reinitializer branch of `[2 initialization]` (only runs if the implementation adds a reinitializer; the review's `reinit` probe passes it and `reinit-separate` fails it).
