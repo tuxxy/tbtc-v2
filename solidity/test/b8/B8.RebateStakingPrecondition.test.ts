@@ -20,8 +20,9 @@
 //   RebateStaking and the reason, and the NatSpec of `setRebateStaking`
 //   says that setting it refuses FROST deposit reveals.
 //
-// Not tested here (DECISIONS.md D20, pending): how governance unsets
-// RebateStaking on a Bridge where it is set and reinitializer(5) is spent.
+// How governance unsets RebateStaking on a Bridge where it is set and
+// reinitializer(5) is spent (DECISIONS.md D20, answered 2026-11-05) is
+// tested in B8.RebateStakingUnset.test.ts.
 import { artifacts, ethers } from "hardhat"
 import { expect } from "chai"
 import {
