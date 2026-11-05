@@ -919,7 +919,41 @@ export async function governanceGuarded(
   return guarded
 }
 
-/// New initializers (reinitializers) of this checkout's Bridge.
+/// The frame key and current value of the Bridge's `_initialized` slot (the
+/// Initializable version): a reinitializer is detected by this slot, not by
+/// its name.
+export async function initializedKey() {
+  return `bridge:slot:${(await locate(["_initialized"])).slot}`
+}
+export async function initializedVersion(c: C11World) {
+  return Number(await readField(c.proxy.address, ["_initialized"]))
+}
+
+/// Every call the bundle makes into the Bridge: `upgradeAndCall` payloads
+/// and the data of council or Timelock calls whose target is the proxy.
+export function bundleBridgeCalls(c: C11World, steps: FrostUpgradeStep[]) {
+  const admin = c.admin.address.toLowerCase()
+  const proxy = c.proxy.address.toLowerCase()
+  const calls: string[] = []
+  for (const s of steps) {
+    let actions: { to: string; data: string }[] = []
+    if (s.kind === "timelock")
+      actions = s.actions.map((a) => ({ to: a.target, data: a.data }))
+    if (s.kind === "council") actions = [{ to: s.to, data: s.data }]
+    for (const a of actions) {
+      if (a.to.toLowerCase() === proxy && a.data !== "0x") calls.push(a.data)
+      if (a.to.toLowerCase() === admin) {
+        const call = c.admin.interface.parseTransaction({ data: a.data })
+        if (call.name === "upgradeAndCall" && call.args[2] !== "0x")
+          calls.push(call.args[2])
+      }
+    }
+  }
+  return calls
+}
+
+/// New initializers (reinitializers) of this checkout's Bridge, by name
+/// (used only as extra outsider probes; detection is by `_initialized`).
 export async function newInitializers(c: C11World) {
   const base = new ethers.utils.Interface(baselineBridgeAbi(c))
   const baseNames = new Set(Object.values(base.functions).map((f) => f.name))
