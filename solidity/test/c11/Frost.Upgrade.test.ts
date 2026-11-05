@@ -308,10 +308,19 @@ describe("C-11a FROST Bridge upgrade bundle (tbtc-v2#58, #57, #56)", function ()
     const payloads = upgradeCalls
       .filter((call) => call.name === "upgradeAndCall" && call.args[2] !== "0x")
       .map((call) => call.args[2] as string)
-    const bridge = new ethers.utils.Interface(await abiOf("Bridge"))
-    // Before the bundle: each payload is a Bridge function; with any address
-    // argument wrong (0x0, an EOA) the timelocked upgradeAndCall is refused;
-    // the bare implementation refuses it.
+    // The Bridge's own ABI plus the FROST interface its fallback dispatches
+    // (IFrostBridge, which extends every IFrost*Bridge): a reinitializer may
+    // sit on either side (review recheck N4).
+    const fragments = new Map<string, any>()
+    for (const name of ["Bridge", "IFrostBridge"])
+      for (const f of Object.values(
+        new ethers.utils.Interface(await abiOf(name)).functions
+      ))
+        if (!fragments.has(f.format())) fragments.set(f.format(), f)
+    const bridge = new ethers.utils.Interface([...fragments.values()])
+    // Before the bundle: each payload is a Bridge or FROST-dispatched
+    // function; with any address argument wrong (0x0, an EOA) the timelocked
+    // upgradeAndCall is refused; the bare implementation refuses it.
     const before = await implementationOf(c)
     for (const payload of payloads) {
       let f: any
@@ -322,7 +331,10 @@ describe("C-11a FROST Bridge upgrade bundle (tbtc-v2#58, #57, #56)", function ()
       }
       expect(
         f,
-        `upgradeAndCall payload ${payload.slice(0, 10)} is a Bridge function`
+        `upgradeAndCall payload ${payload.slice(
+          0,
+          10
+        )} is a Bridge or FROST-dispatched function`
       ).to.not.equal(undefined)
       const args = bridge.decodeFunctionData(f, payload)
       for (const [index, input] of f.inputs.entries()) {

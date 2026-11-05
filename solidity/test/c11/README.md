@@ -14,7 +14,7 @@ test/c11/run.sh
 - A: `Frost.Upgrade.test.ts` (properties 1, 2, 3, 4, 6, 7, 8 and the derivation);
 - B: `Frost.Upgrade.Governance.test.ts` (property 5) and deploy test 85.
 
-Logs are `.c11-tmp/run-A.log` and `.c11-tmp/run-B.log`. The env is as `yarn test` sets it. The class-coverage case in A reads the witnesses of the three discharge cases in the same run, so don't `--grep` it alone. `C11_TIMING=1` prints each case's duration. Shared fixtures, recipes and probes live in `test/c11/c11-cases.ts`.
+Logs are `.c11-tmp/run-A.log` and `.c11-tmp/run-B.log`. The env is as `yarn test` sets it. The class-coverage case in A reads the witnesses of the three discharge cases in the same run, so don't `--grep` it alone. `C11_TIMING=1` prints each case's duration. `[2 window]` reads the whole frame after every step from the upgrade on: each extra bundle step costs it about 1.4 s (8.1–8.7 s at the recheck with a 4-step bundle; the case limit is 10 s). Shared fixtures, recipes and probes live in `test/c11/c11-cases.ts`.
 
 ## The world
 
@@ -66,7 +66,7 @@ During the steps, only these events may be emitted, and only by these contracts 
 - the Timelock: `CallScheduled`, `CallExecuted`, `CallSalt`;
 - nothing from the new BridgeGovernance or the ProxyAdmin.
 
-The Timelock's min delay must be unchanged. A reinitializer, if any, is detected by the Bridge's `_initialized` slot, not by its name: it must reach a version above 5 (and above the previous one), in the same step as the upgrade, through `ProxyAdmin.upgradeAndCall`, and emit nothing beyond `Initialized`.
+The Timelock's min delay must be unchanged. A reinitializer, if any, is detected by the Bridge's `_initialized` slot, not by its name: it must reach a version above 5 (and above the previous one), in the same step as the upgrade, through `ProxyAdmin.upgradeAndCall` whose payload is a Bridge function or a FROST-dispatched (`IFrostBridge`) function, and emit nothing beyond `Initialized`.
 
 ## Cases (`Frost.Upgrade.test.ts`)
 
