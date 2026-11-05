@@ -1,0 +1,12 @@
+diff --git a/solidity/contracts/frost/FrostDepositAdmission.sol b/solidity/contracts/frost/FrostDepositAdmission.sol
+index 6e9d7ece..49776eed 100644
+--- a/solidity/contracts/frost/FrostDepositAdmission.sol
++++ b/solidity/contracts/frost/FrostDepositAdmission.sol
+@@ -102,7 +102,6 @@ library FrostDepositAdmission {
+         );
+         // Rebate and optimistic adapter paths need their own reviewed C-05
+         // accounting; never silently register this receipt as a legacy deposit.
+-        require(bridge.rebateStaking == address(0), "FROST rebate unsupported");
+         uint64 treasuryFee = bridge.depositTreasuryFeeDivisor == 0
+             ? 0
+             : terms.amount / bridge.depositTreasuryFeeDivisor;

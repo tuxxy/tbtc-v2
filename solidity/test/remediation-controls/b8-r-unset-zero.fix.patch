@@ -1,0 +1,29 @@
+diff --git a/solidity/contracts/bridge/BridgeState.sol b/solidity/contracts/bridge/BridgeState.sol
+index c8325148..d04f5580 100644
+--- a/solidity/contracts/bridge/BridgeState.sol
++++ b/solidity/contracts/bridge/BridgeState.sol
+@@ -895,12 +895,18 @@ library BridgeState {
+     function setRebateStaking(Storage storage self, address _rebateStaking)
+         internal
+     {
+-        require(self.rebateStaking == address(0), "Rebate staking already set");
+-
+-        require(
+-            _rebateStaking != address(0),
+-            "Rebate staking address must not be 0x0"
+-        );
++        // D20 control (fixture fix): 0x0 unsets a set address.
++        if (_rebateStaking == address(0)) {
++            require(
++                self.rebateStaking != address(0),
++                "Rebate staking address must not be 0x0"
++            );
++        } else {
++            require(
++                self.rebateStaking == address(0),
++                "Rebate staking already set"
++            );
++        }
+ 
+         self.rebateStaking = _rebateStaking;
+         emit RebateStakingSet(_rebateStaking);
