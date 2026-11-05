@@ -19,6 +19,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "./BridgeGovernanceParameters.sol";
 
 import "./Bridge.sol";
+import "../frost/IFrostBridge.sol";
 
 /// @title Bridge Governance
 /// @notice Owns the `Bridge` contract and is responsible for updating
@@ -1809,5 +1810,127 @@ contract BridgeGovernance is Ownable {
     ///         rebate staking configuration, this call will revert.
     function setRebateStaking(address rebateStaking) external onlyOwner {
         bridge.setRebateStaking(rebateStaking);
+    }
+
+    // === FROST governance (D22) ===
+    //
+    // FROST entrypoints refuse any caller but `Bridge.governance()`, which is
+    // this contract. Each function below forwards one of them, under the same
+    // name and arguments, to the Bridge's FROST dispatch. Like
+    // `setVaultStatus`, `setRedemptionWatchtower` and `setRebateStaking`,
+    // they are installs, switches and one-way cutover steps, so they have no
+    // governance delay. The Bridge enforces each call's own rules.
+
+    /// @notice Installs the FROST wallet registry.
+    function configureFrostRegistry(address registry) external onlyOwner {
+        frostBridge().configureFrostRegistry(registry);
+    }
+
+    /// @notice Turns FROST wallet requests on or off.
+    function setFrostRequestsEnabled(bool enabled) external onlyOwner {
+        frostBridge().setFrostRequestsEnabled(enabled);
+    }
+
+    /// @notice Installs the FROST funding verifier by its runtime code hash.
+    function configureFrostFunding(
+        address verifier,
+        bytes32 runtimeHash,
+        bytes32 qualificationRecord,
+        bytes32 bitcoinGenesis
+    ) external onlyOwner {
+        frostBridge().configureFrostFunding(
+            verifier,
+            runtimeHash,
+            qualificationRecord,
+            bitcoinGenesis
+        );
+    }
+
+    /// @notice Opens or closes the FROST deposit address and reveal gates.
+    function setFrostFundingGates(bool addressesEnabled, bool revealEnabled)
+        external
+        onlyOwner
+    {
+        frostBridge().setFrostFundingGates(addressesEnabled, revealEnabled);
+    }
+
+    /// @notice Configures FROST redemptions.
+    function configureFrostRedemptions(
+        bytes32 genesis,
+        uint64 finalityBlocks,
+        uint64 maximumCertificateBlocks,
+        address watchtower,
+        bytes32 legacyTransitionEvidence
+    ) external onlyOwner {
+        frostBridge().configureFrostRedemptions(
+            genesis,
+            finalityBlocks,
+            maximumCertificateBlocks,
+            watchtower,
+            legacyTransitionEvidence
+        );
+    }
+
+    /// @notice Turns FROST redemption requests on or off.
+    function setFrostRedemptionsEnabled(bool enabled) external onlyOwner {
+        frostBridge().setFrostRedemptionsEnabled(enabled);
+    }
+
+    /// @notice Quarantines a FROST wallet at an expected state version.
+    function quarantineFrostWallet(
+        bytes32 walletId,
+        uint64 expectedStateVersion,
+        bytes32 reasonHash,
+        bytes32 evidenceHash
+    ) external onlyOwner {
+        frostBridge().quarantineFrostWallet(
+            walletId,
+            expectedStateVersion,
+            reasonHash,
+            evidenceHash
+        );
+    }
+
+    /// @notice Turns ECDSA-to-FROST drain commitments on or off.
+    function setFrostDrainEnabled(bool enabled) external onlyOwner {
+        frostBridge().setFrostDrainEnabled(enabled);
+    }
+
+    /// @notice Installs the FROST exposure controller.
+    function installFrostExposureController(address controller)
+        external
+        onlyOwner
+    {
+        frostBridge().installFrostExposureController(controller);
+    }
+
+    /// @notice Moves wallet creation from LegacyOpen to LegacyDraining.
+    function beginLegacyDkgDrain() external onlyOwner {
+        frostBridge().beginLegacyDkgDrain();
+    }
+
+    /// @notice Moves wallet creation from LegacyDraining back to LegacyOpen.
+    function abortLegacyDkgDrain(bytes32 policyRecord) external onlyOwner {
+        frostBridge().abortLegacyDkgDrain(policyRecord);
+    }
+
+    /// @notice Moves wallet creation from LegacyDraining to FrostOnly,
+    ///         permanently.
+    function completeFrostCutover(bytes32 manifestHash) external onlyOwner {
+        frostBridge().completeFrostCutover(manifestHash);
+    }
+
+    /// @notice Sets the seconds a reserved deposit must keep before its
+    ///         refund locktime.
+    function setFrostDepositReservationMargin(uint32 margin)
+        external
+        onlyOwner
+    {
+        frostBridge().setFrostDepositReservationMargin(margin);
+    }
+
+    /// @notice The Bridge's FROST entrypoints, served by its fallback.
+    function frostBridge() internal view returns (IFrostBridge) {
+        return IFrostBridge(address(bridge));
     }
 }
