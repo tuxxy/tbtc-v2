@@ -40,735 +40,75 @@
 //    mismatched hash is refused; replacement is a recorded fact.
 // 8. ROLLBACK: before any FROST state exists, a timelocked rollback to the
 //    40a11d1d implementation restores the pre-bundle frame and legacy service.
-import hre, { artifacts, deployments, ethers } from "hardhat"
+import hre, { artifacts, ethers } from "hardhat"
 import { expect } from "chai"
-import type { Contract } from "ethers"
-import fs from "fs"
-import path from "path"
 import {
-  c11World,
-  C11World,
-  LegacyName,
-  Builder,
-  FrostUpgradeBundle,
-  FrostUpgradeStep,
-  BUILDER_FILE,
-  BUILDER_TAG,
   BUILDER_SKIP_ENV,
+  BUILDER_TAG,
+  C11World,
+  CLASSES,
+  CLOSING_PERIOD,
+  FrostUpgradeStep,
+  GENESIS,
   GOVERNANCE_REASONS,
-  OWNABLE_REASON,
+  ISSUE_57,
+  LegacyName,
+  LegacyState,
   MAX_CODE,
-  loadBuilder,
+  Mode,
+  NO_MAIN,
+  OWNABLE_REASON,
+  RECIPES,
+  RECORD,
+  REDEMPTION_TIMEOUT,
+  RED_AMOUNT,
+  SWEEP_FEE,
+  ZERO_ADDRESS,
   abiOf,
-  inputs,
-  reason,
-  implementationOf,
-  schedule,
+  allowedDifferences,
+  attemptAuthority,
+  bundleBridgeCalls,
+  c11Frame,
+  c11World,
+  calldata,
+  challengeKey,
+  changed,
+  codehash,
+  completeZ,
+  context,
+  deployed,
   execute,
+  expectField,
+  field,
+  frostAt,
+  frostSlots,
+  frostWallet,
+  gov,
+  governanceGuarded,
+  immutableReferences,
+  implementationOf,
+  inclusion,
+  increaseTime,
+  initializedKey,
+  initializedVersion,
+  inputs,
+  named,
+  outpoint,
+  p2wpkh,
+  probeOutsider,
+  reason,
+  redemptionKey,
+  refused,
+  requireBuilder,
   runStep,
   runSteps,
-  readField,
-  frostSlots,
-  governanceGuarded,
-  newInitializers,
-  defaultArguments,
-  unmappedBaseViews,
-  c11Frame,
-  changed,
-  allowedDifferences,
-  increaseTime,
-  now,
-  NO_MAIN,
+  schedule,
+  setup,
   transaction,
-  inclusion,
-  p2wpkh,
-  outpoint,
-} from "../helpers/c11-upgrade-world"
-import {
-  dkg,
-  MAX_UINT64,
-  Mode,
-  LegacyState,
-} from "../helpers/k09-registry-world"
-import {
-  redemptionKey,
-  challengeKey,
-  SWEEP_FEE,
-  RED_AMOUNT,
-} from "../helpers/k09-legacy-ledger"
-import { CLASSES } from "../k09/obligation-ledger"
-import { p2tr, TYPE, ZERO } from "../helpers/frost-movement-world"
-
-const GENESIS = ethers.utils.id("C11 synthetic regtest domain")
-const RECORD = ethers.utils.id("UNQUALIFIED C11 local test record")
-const EVIDENCE = ethers.utils.id("C11 legacy transition evidence")
-const ABORT_RECORD = ethers.utils.id("C11 reviewed abort policy")
-const MANIFEST = ethers.utils.id("C11 cutover manifest")
-const BUDGET_RECORD = ethers.utils.id("C11 test budget; D-10 OPEN")
-const ZERO_ADDRESS = ethers.constants.AddressZero
-const REDEMPTION_TIMEOUT = 5 * 86400
-const CLOSING_PERIOD = 7 * 86400
-/// The entrypoints #57 names; the derivation must find at least these.
-const ISSUE_57 = [
-  "configureFrostRegistry",
-  "configureFrostFunding",
-  "configureFrostRedemptions",
-  "installFrostExposureController",
-  "setFrostFundingGates",
-  "setFrostDrainEnabled",
-  "setFrostRedemptionsEnabled",
-  "setFrostRequestsEnabled",
-  "setFrostDepositReservationMargin",
-  "beginLegacyDkgDrain",
-  "completeFrostCutover",
-]
-
-let builder: Builder | null = null
-/// The named assertion every case starts with.
-async function requireBuilder(): Promise<Builder> {
-  builder = await loadBuilder()
-  expect(builder, `C-11 bundle builder present: ${BUILDER_FILE}`).to.not.equal(
-    null
-  )
-  return builder as Builder
-}
-
-/// The bundle deployed by the builder (contracts only, no step executed).
-const deployedFixture = deployments.createFixture(async () => {
-  const c = await c11World()
-  const preFrame = await c11Frame(c)
-  const bundle = await (builder as Builder).deployFrostBridgeUpgrade(
-    hre,
-    inputs(c)
-  )
-  return { c, bundle, preFrame }
-})
-/// The bundle executed: every step, as the council stand-in.
-const upgradedFixture = deployments.createFixture(async () => {
-  const d = await deployedFixture()
-  await runSteps(d.c, d.bundle.steps)
-  return d
-})
-/// A fixture call whose own failures surface as `label`; named assertions
-/// raised inside it (a failing bundle step) pass through.
-async function named<T>(label: string, fixture: () => Promise<T>): Promise<T> {
-  await requireBuilder()
-  let failure = ""
-  let result: T | undefined
-  try {
-    result = await fixture()
-  } catch (e: any) {
-    if (e?.name === "AssertionError") throw e
-    failure = reason(e)
-  }
-  expect(failure, label).to.equal("")
-  return result as T
-}
-const deployed = () => named("C-11 bundle deploys", deployedFixture)
-const upgraded = () => named("C-11 bundle deploys", upgradedFixture)
-
-/// Context for the governance cases.
-type Run = {
-  c: C11World
-  bundle: FrostUpgradeBundle
-  bg: Contract
-  frost: Contract
-}
-function context(c: C11World, bundle: FrostUpgradeBundle): Run {
-  return {
-    c,
-    bundle,
-    bg: new ethers.Contract(bundle.bridgeGovernance, [], c.council),
-    frost: new ethers.Contract(c.proxy.address, [], ethers.provider),
-  }
-}
-async function frostAt(c: C11World) {
-  return ethers.getContractAt("IFrostBridge", c.proxy.address)
-}
-/// The FROST/Bridge fragment of a governance entrypoint by name.
-async function fragment(name: string) {
-  for (const a of ["IFrostBridge", "Bridge"]) {
-    const i = new ethers.utils.Interface(await abiOf(a))
-    const f = Object.values(i.functions).find((x) => x.name === name)
-    if (f) return { i, f }
-  }
-  throw Error(`no fragment ${name}`)
-}
-/// Calldata of a Bridge governance entrypoint; a D22 forwarder has the same
-/// name and types, so the same calldata addresses it on BridgeGovernance.
-async function calldata(name: string, args: unknown[]) {
-  const { i, f } = await fragment(name)
-  return i.encodeFunctionData(f, args)
-}
-/// The council stand-in through the new BridgeGovernance, as a named step.
-async function gov(r: Run, name: string, args: unknown[]) {
-  let refused = ""
-  try {
-    await (
-      await r.c.council.sendTransaction({
-        to: r.bundle.bridgeGovernance,
-        data: await calldata(name, args),
-      })
-    ).wait()
-  } catch (e) {
-    refused = reason(e)
-  }
-  expect(refused, `council through BridgeGovernance: ${name}`).to.equal("")
-}
-/// A refused call: reverted with one of `reasons` (any reason when empty).
-async function refused(
-  label: string,
-  call: () => Promise<any>,
-  reasons: string[] = []
-) {
-  let why = ""
-  try {
-    const tx = await call()
-    if (tx && typeof tx.wait === "function") await tx.wait()
-  } catch (e) {
-    why = reason(e) || "<reverted>"
-  }
-  expect(why, `${label}: not refused`).to.not.equal("")
-  if (reasons.length > 0)
-    expect(reasons, `${label}: refused for "${why}"`).to.include(why)
-}
-const codehash = async (a: string) =>
-  ethers.utils.keccak256(await ethers.provider.getCode(a))
-
-// ---------------------------------------------------------------------------
-// Valid-call recipes for every governance-guarded FROST entrypoint. The
-// derivation case fails if a derived entrypoint has none.
-// ---------------------------------------------------------------------------
-type Recipe = {
-  setup?: (string | ((r: Run) => Promise<void>))[]
-  args: (r: Run) => Promise<unknown[]> | unknown[]
-  effect: (r: Run) => Promise<void>
-}
-const field = (r: Run, p: string[]) => readField(r.c.proxy.address, p)
-const expectField = async (
-  r: Run,
-  p: string[],
-  v: bigint | string,
-  label: string
-) =>
-  expect((await field(r, p)).toString(), label).to.equal(BigInt(v).toString())
-
-/// Completes the in-flight legacy DKG Z through the real registry.
-async function completeZ(r: Run) {
-  const d = dkg(r.c)
-  const z = await d.submit(r.c.z.key)
-  await d.challengeOver()
-  await r.c.registry.connect(z.submitter).approveDkgResult(z.result)
-  return z
-}
-
-/// A FROST wallet through the registry FIXTURE callbacks (C-11b is the real
-/// registry stack); ready, so Live.
-async function frostWallet(r: Run, scalar = 0x3100) {
-  const { chainId } = await ethers.provider.getNetwork()
-  const pub = ethers.utils.computePublicKey(
-    ethers.utils.hexZeroPad(ethers.utils.hexlify(scalar), 32),
-    true
-  )
-  const q = `0x${pub.slice(4)}`
-  const descriptor = {
-    scheme: 2,
-    profile: 1,
-    chainId,
-    registry: r.c.frostRegistry.address,
-    epoch: await ethers.provider.getBlockNumber(),
-    members: [1, 2, 3],
-    operators: [r.c.keeper.address, r.c.manager.address, r.c.alias.address],
-    threshold: 2,
-    snowfallDescriptor: ethers.utils.id(`C11 FROST wallet ${scalar}`),
-    outputKey: q,
-  }
-  const descriptorHash = ethers.utils.keccak256(
-    ethers.utils.defaultAbiCoder.encode(
-      ["bytes32", TYPE],
-      [ethers.utils.id("tbtc-v2/frost-descriptor/v1"), descriptor]
-    )
-  )
-  const id = ethers.utils.keccak256(
-    ethers.utils.concat([ethers.utils.id("tbtc-v2/frost-wallet-id/v1"), q])
-  )
-  await r.c.frostRegistry.created(
-    ethers.utils.defaultAbiCoder.encode([TYPE], [descriptor]),
-    (await ethers.provider.getBlockNumber()) + 100000
-  )
-  await r.c.frostRegistry.ready(id, descriptorHash)
-  return { q, id, label: id.slice(0, 42), descriptorHash }
-}
-type FrostWallet = Awaited<ReturnType<typeof frostWallet>>
-
-let blinding = 0
-async function frostTerms(r: Run, x: FrostWallet, amount: number) {
-  blinding += 1
-  const { chainId } = await ethers.provider.getNetwork()
-  const t = {
-    chainId,
-    bridge: r.c.proxy.address,
-    bitcoinGenesis: GENESIS,
-    fullWalletId: x.id,
-    descriptorHash: x.descriptorHash,
-    depositor: r.c.alias.address,
-    vault: ZERO_ADDRESS,
-    blinding: ethers.utils.hexZeroPad(ethers.utils.hexlify(blinding), 8),
-    amount,
-    refundKey: x.q,
-    refundLocktime: (await now()) + 86400,
-    extraData: ZERO,
-  }
-  return t
-}
-/// A FROST reveal (not sent): terms and the funding transaction.
-async function frostReveal(r: Run, x: FrostWallet, amount: number) {
-  const frost = await frostAt(r.c)
-  const t = await frostTerms(r, x, amount)
-  const output = await frost.frostDepositOutput(t)
-  const fundingTx = transaction(
-    [[ethers.utils.id(`C11 FROST funding ${blinding}`), 0]],
-    [{ value: amount, script: p2tr(output.key) }]
-  )
-  return { t, fundingTx }
-}
-
-/// Retires the rebated pending legacy redemptions (T and V, by timeout): the
-/// Bridge's setRebateStaking rule says to unset only when none is pending.
-/// (V's watchtower veto window has elapsed during the bundle's 48 h
-/// governance delay, so the timeout is the route left.)
-async function retireRebatedRedemptions(r: Run) {
-  await increaseTime(REDEMPTION_TIMEOUT + 1)
-  const { legacy } = r.c
-  await legacy
-    .connect(r.c.alias)
-    .notifyRedemptionTimeout(
-      r.c.wallets.T.pkh,
-      r.c.wallets.T.members,
-      r.c.scripts.T
-    )
-  await legacy
-    .connect(r.c.alias)
-    .notifyRedemptionTimeout(
-      r.c.wallets.R.pkh,
-      r.c.wallets.R.members,
-      r.c.scripts.V
-    )
-}
-
-/// The activation runbook (D20, then installs, then gates), through the
-/// production route. Returns a ready FROST wallet.
-async function activate(r: Run, retire = true) {
-  if (retire) await retireRebatedRedemptions(r)
-  await gov(r, "setRebateStaking", [ZERO_ADDRESS])
-  await gov(r, "configureFrostRegistry", [r.c.frostRegistry.address])
-  await gov(r, "configureFrostFunding", [
-    r.bundle.verifier,
-    await codehash(r.bundle.verifier),
-    RECORD,
-    GENESIS,
-  ])
-  // Controller governance is the council stand-in (D-10 OPEN); TEST ceilings.
-  const controller = await ethers.getContractAt(
-    "FrostExposureController",
-    r.bundle.exposureController
-  )
-  await controller
-    .connect(r.c.council)
-    .openBudgetPeriod(MAX_UINT64, MAX_UINT64, BUDGET_RECORD)
-  await gov(r, "installFrostExposureController", [r.bundle.exposureController])
-  await gov(r, "setFrostFundingGates", [true, true])
-  return { wallet: await frostWallet(r), controller }
-}
-
-/// A funded FROST wallet: a real FROST reveal and deposit sweep.
-async function fundFrostWallet(r: Run, x: FrostWallet, amount: number) {
-  const frost = await frostAt(r.c)
-  const { t, fundingTx } = await frostReveal(r, x, amount)
-  await frost.connect(r.c.alias).revealFrostDeposit(t, fundingTx.tx, 0)
-  const main = transaction(
-    [[fundingTx.hash, 0]],
-    [{ value: amount - SWEEP_FEE, script: p2tr(x.q) }]
-  )
-  await frost.connect(r.c.maintainer).submitFrostDepositSweepProof({
-    walletId: x.id,
-    transaction: main.tx,
-    proof: inclusion(main.hash),
-    includeMain: false,
-    vault: ZERO_ADDRESS,
-  })
-}
-
-let quarantined: { id: string; version: number } | undefined
-const RECIPES: Record<string, Recipe> = {
-  configureFrostRegistry: {
-    args: (r) => [r.c.frostRegistry.address],
-    effect: async (r) =>
-      expect(
-        await (await frostAt(r.c)).frostRegistry(),
-        "registry bound"
-      ).to.equal(r.c.frostRegistry.address),
-  },
-  setFrostRequestsEnabled: {
-    setup: ["configureFrostRegistry"],
-    args: () => [true],
-    effect: (r) =>
-      expectField(
-        r,
-        ["self", "frost", "requestsEnabled"],
-        BigInt(1),
-        "requests enabled"
-      ),
-  },
-  configureFrostFunding: {
-    args: async (r) => [
-      r.bundle.verifier,
-      await codehash(r.bundle.verifier),
-      RECORD,
-      GENESIS,
-    ],
-    effect: (r) =>
-      expectField(
-        r,
-        ["self", "frostFunding", "configuration", "verifier"],
-        BigInt(r.bundle.verifier),
-        "verifier installed"
-      ),
-  },
-  installFrostExposureController: {
-    args: (r) => [r.bundle.exposureController],
-    effect: async (r) =>
-      expect(
-        await (await frostAt(r.c)).frostExposureController(),
-        "controller installed"
-      ).to.equal(r.bundle.exposureController),
-  },
-  setFrostFundingGates: {
-    setup: ["configureFrostFunding", "installFrostExposureController"],
-    args: () => [true, true],
-    effect: async (r) => {
-      await expectField(
-        r,
-        ["self", "frostFunding", "configuration", "addressesEnabled"],
-        BigInt(1),
-        "addresses gate open"
-      )
-      await expectField(
-        r,
-        ["self", "frostFunding", "configuration", "revealEnabled"],
-        BigInt(1),
-        "reveal gate open"
-      )
-    },
-  },
-  setFrostDrainEnabled: {
-    setup: ["installFrostExposureController"],
-    args: () => [true],
-    effect: (r) =>
-      expectField(
-        r,
-        ["self", "frostMovement", "drainEnabled"],
-        BigInt(1),
-        "drain enabled"
-      ),
-  },
-  configureFrostRedemptions: {
-    args: (r) => [GENESIS, 6, 100, r.c.tower.address, EVIDENCE],
-    effect: (r) =>
-      expectField(
-        r,
-        ["self", "frostRedemptions", "configuration", "bitcoinGenesis"],
-        BigInt(GENESIS),
-        "redemptions configured"
-      ),
-  },
-  setFrostRedemptionsEnabled: {
-    setup: ["configureFrostFunding", "configureFrostRedemptions"],
-    args: () => [true],
-    effect: (r) =>
-      expectField(
-        r,
-        ["self", "frostRedemptions", "configuration", "enabled"],
-        BigInt(1),
-        "redemptions enabled"
-      ),
-  },
-  setFrostDepositReservationMargin: {
-    args: () => [3600],
-    effect: async (r) =>
-      expect(
-        await (await frostAt(r.c)).frostDepositReservationMargin(),
-        "margin set"
-      ).to.equal(3600),
-  },
-  beginLegacyDkgDrain: {
-    args: () => [],
-    effect: async (r) =>
-      expect(
-        await (await frostAt(r.c)).frostCreationMode(),
-        "LegacyDraining"
-      ).to.equal(Mode.LegacyDraining),
-  },
-  abortLegacyDkgDrain: {
-    setup: ["beginLegacyDkgDrain"],
-    args: () => [ABORT_RECORD],
-    effect: async (r) =>
-      expect(
-        await (await frostAt(r.c)).frostCreationMode(),
-        "LegacyOpen again"
-      ).to.equal(Mode.LegacyOpen),
-  },
-  completeFrostCutover: {
-    setup: [
-      "configureFrostRegistry",
-      "beginLegacyDkgDrain",
-      async (r) => {
-        await completeZ(r)
-      },
-    ],
-    args: () => [MANIFEST],
-    effect: async (r) => {
-      const frost = await frostAt(r.c)
-      expect(await frost.frostCreationMode(), "FrostOnly").to.equal(
-        Mode.FrostOnly
-      )
-      expect(await frost.frostCutoverManifest(), "manifest").to.equal(MANIFEST)
-    },
-  },
-  quarantineFrostWallet: {
-    setup: [
-      async (r) => {
-        // Activation without retiring the rebated legacy redemptions first
-        // (that runbook rule is exercised by the runbook case).
-        const { wallet } = await activate(r, false)
-        await fundFrostWallet(r, wallet, 200000)
-        const custody = await (await frostAt(r.c)).frostWalletCustody(wallet.id)
-        quarantined = { id: wallet.id, version: Number(custody.stateVersion) }
-      },
-    ],
-    args: () => [
-      quarantined!.id,
-      quarantined!.version,
-      ethers.utils.id("C11 quarantine reason"),
-      ethers.utils.id("C11 quarantine evidence"),
-    ],
-    effect: async (r) => {
-      const record = await (
-        await frostAt(r.c)
-      ).frostWalletQuarantine(quarantined!.id, quarantined!.version + 1)
-      expect(record.stateVersion, "quarantine recorded").to.equal(
-        quarantined!.version + 1
-      )
-    },
-  },
-}
-
-/// Runs a recipe's setup through the production route.
-async function setup(r: Run, name: string) {
-  for (const s of RECIPES[name].setup ?? []) {
-    if (typeof s === "string") {
-      await setup(r, s)
-      await gov(r, s, await RECIPES[s].args(r))
-    } else await s(r)
-  }
-}
-
-/// FROST user entrypoints, called by an outsider (property 4 and the window).
-async function userEntrypoints(c: C11World) {
-  const frost = await frostAt(c)
-  const x = await frostLikeTerms(c)
-  const fundingTx = transaction(
-    [[ethers.utils.id("C11 outsider funding"), 0]],
-    [{ value: 100000, script: p2tr(ethers.utils.hexZeroPad("0x02", 32)) }]
-  )
-  return {
-    "FROST reveal": () =>
-      frost.connect(c.outsider).revealFrostDeposit(x, fundingTx.tx, 0),
-    "FROST wallet request": () =>
-      frost.connect(c.outsider).requestNewFrostWallet(),
-    "FROST redemption request": () =>
-      frost
-        .connect(c.outsider)
-        .requestFrostRedemption(
-          ethers.utils.hexZeroPad("0x01", 32),
-          `0x160014${"11".repeat(20)}`,
-          100000,
-          c.outsider.address
-        ),
-    "drain commitment": () =>
-      c.legacy
-        .connect(c.wallets.M.signers[0])
-        .submitMovingFundsCommitment(
-          c.wallets.M.pkh,
-          c.mains.M,
-          c.wallets.M.members,
-          1,
-          [ethers.utils.hexZeroPad("0x0c11", 20)]
-        ),
-  } as Record<string, () => Promise<any>>
-}
-async function frostLikeTerms(c: C11World) {
-  const { chainId } = await ethers.provider.getNetwork()
-  return {
-    chainId,
-    bridge: c.proxy.address,
-    bitcoinGenesis: GENESIS,
-    fullWalletId: ethers.utils.hexZeroPad("0x0c11", 32),
-    descriptorHash: ethers.utils.hexZeroPad("0x0c11", 32),
-    depositor: c.outsider.address,
-    vault: ZERO_ADDRESS,
-    blinding: ethers.utils.hexZeroPad("0x01", 8),
-    amount: 100000,
-    refundKey: ethers.utils.hexZeroPad("0x02", 32),
-    refundLocktime: (await now()) + 86400,
-    extraData: ZERO,
-  }
-}
-
-/// Outsider and deployer calls to every governance-guarded entrypoint
-/// directly on the Bridge (refused with the governance reason); outsider
-/// calls to every new initializer and every FROST user entrypoint (refused);
-/// the frame is unchanged.
-async function probeOutsider(r: Run, guarded: any[], label: string) {
-  const before = await c11Frame(r.c)
-  for (const f of guarded) {
-    // The governance check is each branch's first statement, so any
-    // arguments reach it; the refusal reason is pinned.
-    const data = await calldata(f.name, defaultArguments(f, true))
-    for (const [who, s] of Object.entries({
-      outsider: r.c.outsider,
-      deployer: r.c.deployer,
-    }))
-      await refused(
-        `${label}: ${who} ${f.name} on the Bridge`,
-        () => s.sendTransaction({ to: r.c.proxy.address, data }),
-        GOVERNANCE_REASONS
-      )
-  }
-  for (const f of await newInitializers(r.c)) {
-    const i = new ethers.utils.Interface([f])
-    for (const max of [false, true])
-      await refused(`${label}: outsider initializer ${f.name}`, () =>
-        r.c.outsider.sendTransaction({
-          to: r.c.proxy.address,
-          data: i.encodeFunctionData(f, defaultArguments(f, max)),
-        })
-      )
-  }
-  for (const [name, call] of Object.entries(await userEntrypoints(r.c)))
-    await refused(`${label}: outsider ${name}`, call)
-  expect(
-    changed(before, await c11Frame(r.c)),
-    `${label}: frame unchanged by outsider calls`
-  ).to.deep.equal([])
-}
-
-/// ProxyAdmin, Timelock, Bridge and BridgeGovernance attempts by `who`.
-async function attemptAuthority(
-  r: Run,
-  who: { name: string; signer: any },
-  guarded: any[]
-) {
-  const { c, bundle } = r
-  const s = who.signer
-  await refused(
-    `${who.name}: ProxyAdmin.upgrade`,
-    () => c.admin.connect(s).upgrade(c.proxy.address, c.baseline.address),
-    [OWNABLE_REASON]
-  )
-  await refused(
-    `${who.name}: ProxyAdmin.upgradeAndCall`,
-    () =>
-      c.admin
-        .connect(s)
-        .upgradeAndCall(c.proxy.address, c.baseline.address, "0x"),
-    [OWNABLE_REASON]
-  )
-  await refused(
-    `${who.name}: ProxyAdmin.changeProxyAdmin`,
-    () => c.admin.connect(s).changeProxyAdmin(c.proxy.address, s.address),
-    [OWNABLE_REASON]
-  )
-  await refused(`${who.name}: Timelock schedule`, () =>
-    schedule(
-      c,
-      {
-        kind: "timelock",
-        actions: [
-          {
-            target: c.admin.address,
-            value: 0,
-            data: c.admin.interface.encodeFunctionData("upgrade", [
-              c.proxy.address,
-              c.baseline.address,
-            ]),
-          },
-        ],
-        predecessor: ethers.constants.HashZero,
-        salt: ethers.utils.id(`C11 ${who.name}`),
-        description: "attacker",
-      },
-      s
-    )
-  )
-  for (const f of guarded) {
-    const data = await calldata(f.name, defaultArguments(f, true))
-    await refused(
-      `${who.name}: ${f.name} on the Bridge`,
-      () => s.sendTransaction({ to: c.proxy.address, data }),
-      GOVERNANCE_REASONS
-    )
-    await refused(
-      `${who.name}: ${f.name} through BridgeGovernance`,
-      () => s.sendTransaction({ to: bundle.bridgeGovernance, data }),
-      [OWNABLE_REASON]
-    )
-  }
-  const bg = await ethers.getContractAt(
-    "BridgeGovernance",
-    bundle.bridgeGovernance
-  )
-  await refused(
-    `${who.name}: BridgeGovernance.transferOwnership`,
-    () => bg.connect(s).transferOwnership(s.address),
-    [OWNABLE_REASON]
-  )
-  await refused(
-    `${who.name}: BridgeGovernance.beginBridgeGovernanceTransfer`,
-    () => bg.connect(s).beginBridgeGovernanceTransfer(s.address),
-    [OWNABLE_REASON]
-  )
-  const controller = await ethers.getContractAt(
-    "FrostExposureController",
-    bundle.exposureController
-  )
-  await refused(`${who.name}: exposure budget`, () =>
-    controller
-      .connect(s)
-      .openBudgetPeriod(MAX_UINT64, MAX_UINT64, BUDGET_RECORD)
-  )
-}
-
-/// Immutable references of a compiled contract, from its build-info (each
-/// build-info file is parsed once).
-const buildInfos = new Map<string, any>()
-async function immutableReferences(source: string, name: string) {
-  const dbg = artifacts
-    .formArtifactPathFromFullyQualifiedName(`${source}:${name}`)
-    .replace(/\.json$/, ".dbg.json")
-  const file = path.resolve(
-    path.dirname(dbg),
-    JSON.parse(fs.readFileSync(dbg, "utf8")).buildInfo
-  )
-  if (!buildInfos.has(file))
-    buildInfos.set(file, JSON.parse(fs.readFileSync(file, "utf8")))
-  const out =
-    buildInfos.get(file).output.contracts[source][name].evm.deployedBytecode
-  return (out.immutableReferences ?? {}) as Record<
-    string,
-    { start: number; length: number }[]
-  >
-}
+  unmappedBaseViews,
+  upgraded,
+  userEntrypoints,
+} from "./c11-cases"
 
 describe("C-11a FROST Bridge upgrade bundle (tbtc-v2#58, #57, #56)", function () {
   this.timeout(180_000)
@@ -940,17 +280,22 @@ describe("C-11a FROST Bridge upgrade bundle (tbtc-v2#58, #57, #56)", function ()
           ethers.utils.getAddress(bundle.bridgeImplementation)
       )
         upgradedAt = i
-      if (upgradedAt >= 0) await probeOutsider(r, guarded, `after step ${i}`)
+      if (upgradedAt >= 0)
+        await probeOutsider(
+          r,
+          guarded,
+          `after step ${i}`,
+          bundleBridgeCalls(c, bundle.steps)
+        )
     })
     expect(upgradedAt, "the bundle upgrades the implementation").to.be.at.least(
       0
     )
   })
 
-  it("[2 initialization] a new reinitializer is atomic and refuses repeat, bare and wrong-address calls; without one no FROST field is set", async () => {
+  it("[2 initialization] a reinitializer (detected by the _initialized slot) uses an unused version, runs atomically with the upgrade and refuses repeat, bare and wrong-address calls; without one no FROST field is set", async () => {
     const { c: w, bundle } = await deployed()
     c = w
-    const initializers = await newInitializers(c)
     const proxyAdmin = c.admin.interface
     const upgradeCalls = bundle.steps
       .flatMap((s) => (s.kind === "timelock" ? s.actions : []))
@@ -960,14 +305,85 @@ describe("C-11a FROST Bridge upgrade bundle (tbtc-v2#58, #57, #56)", function ()
       upgradeCalls.length,
       "the bundle has a ProxyAdmin upgrade"
     ).to.be.greaterThan(0)
-    if (initializers.length === 0) {
-      for (const call of upgradeCalls)
-        if (call.name === "upgradeAndCall")
+    const payloads = upgradeCalls
+      .filter((call) => call.name === "upgradeAndCall" && call.args[2] !== "0x")
+      .map((call) => call.args[2] as string)
+    const bridge = new ethers.utils.Interface(await abiOf("Bridge"))
+    // Before the bundle: each payload is a Bridge function; with any address
+    // argument wrong (0x0, an EOA) the timelocked upgradeAndCall is refused;
+    // the bare implementation refuses it.
+    const before = await implementationOf(c)
+    for (const payload of payloads) {
+      let f: any
+      try {
+        f = bridge.getFunction(payload.slice(0, 10))
+      } catch (e) {
+        f = undefined
+      }
+      expect(
+        f,
+        `upgradeAndCall payload ${payload.slice(0, 10)} is a Bridge function`
+      ).to.not.equal(undefined)
+      const args = bridge.decodeFunctionData(f, payload)
+      for (const [index, input] of f.inputs.entries()) {
+        if (input.type !== "address") continue
+        for (const wrong of [ZERO_ADDRESS, c.outsider.address]) {
+          const mutated = [...args]
+          mutated[index] = wrong
+          const step: FrostUpgradeStep = {
+            kind: "timelock",
+            actions: [
+              {
+                target: c.admin.address,
+                value: 0,
+                data: proxyAdmin.encodeFunctionData("upgradeAndCall", [
+                  c.proxy.address,
+                  bundle.bridgeImplementation,
+                  bridge.encodeFunctionData(f, mutated),
+                ]),
+              },
+            ],
+            predecessor: ethers.constants.HashZero,
+            salt: ethers.utils.id(`C11 wrong ${index} ${wrong}`),
+            description: "wrong address",
+          }
+          await refused(
+            `wrong-address initialization refused (${f.name} argument ${index} = ${wrong})`,
+            () => runStep(c, step)
+          )
           expect(
-            call.args[2],
-            "no initializer: upgradeAndCall carries no call"
-          ).to.equal("0x")
-      await upgradedFixture()
+            await implementationOf(c),
+            "implementation unchanged by a refused initialization"
+          ).to.equal(before)
+        }
+      }
+      await refused("bare implementation refuses initialization", () =>
+        c.council.sendTransaction({
+          to: bundle.bridgeImplementation,
+          data: payload,
+        })
+      )
+    }
+    // The bundle, step by step: where the implementation and the version change.
+    const version = await initializedVersion(c)
+    let upgradeStep = -1
+    let initStep = -1
+    for (const [i, step] of bundle.steps.entries()) {
+      await runSteps(c, [step])
+      if (
+        upgradeStep < 0 &&
+        (await implementationOf(c)) ===
+          ethers.utils.getAddress(bundle.bridgeImplementation)
+      )
+        upgradeStep = i
+      if (initStep < 0 && (await initializedVersion(c)) !== version)
+        initStep = i
+    }
+    if (initStep < 0) {
+      expect(
+        payloads,
+        "no reinitializer: upgradeAndCall carries no call"
+      ).to.deep.equal([])
       for (const s of await frostSlots())
         expect(
           await ethers.provider.getStorageAt(
@@ -978,74 +394,107 @@ describe("C-11a FROST Bridge upgrade bundle (tbtc-v2#58, #57, #56)", function ()
         ).to.equal(ethers.constants.HashZero)
       return
     }
-    for (const f of initializers) {
-      const version = Number(/^initializeV(\d+)/.exec(f.name)?.[1])
-      expect(
-        version,
-        `reinitializer version unused (> 5): ${f.name}`
-      ).to.be.greaterThan(5)
-    }
-    const atomic = upgradeCalls.find(
-      (call) =>
-        call.name === "upgradeAndCall" &&
-        initializers.some((f) =>
-          call.args[2].startsWith(new ethers.utils.Interface([f]).getSighash(f))
+    const next = await initializedVersion(c)
+    expect(
+      next,
+      `reinitializer version unused (> 5 and > ${version})`
+    ).to.be.greaterThan(Math.max(5, version))
+    expect(
+      initStep,
+      "reinitializer runs atomically with the upgrade (same step)"
+    ).to.equal(upgradeStep)
+    expect(
+      payloads.length,
+      "reinitializer runs atomically through upgradeAndCall"
+    ).to.be.greaterThan(0)
+    for (const payload of payloads)
+      for (const s of [c.council, c.outsider])
+        await refused("repeated initialization refused", () =>
+          s.sendTransaction({ to: c.proxy.address, data: payload })
         )
+  })
+
+  it("[1, 3 side effects] the bundle's steps emit only the named events; the governance delay, Timelock delay and roles are unchanged", async () => {
+    const { c: w, bundle } = await deployed()
+    c = w
+    const newGovernance = await ethers.getContractAt(
+      "BridgeGovernance",
+      bundle.bridgeGovernance
     )
     expect(
-      atomic,
-      "reinitializer runs atomically through upgradeAndCall"
-    ).to.not.equal(undefined)
-    const init = initializers.find((f) =>
-      atomic!.args[2].startsWith(new ethers.utils.Interface([f]).getSighash(f))
-    )!
-    const iface = new ethers.utils.Interface([init])
-    const args = iface.decodeFunctionData(init, atomic!.args[2])
-    // Wrong addresses, each address argument in turn, through the real route.
-    const before = await implementationOf(c)
-    for (const [index, input] of init.inputs.entries()) {
-      if (input.type !== "address") continue
-      for (const wrong of [ZERO_ADDRESS, c.outsider.address]) {
-        const mutated = [...args]
-        mutated[index] = wrong
-        const step: FrostUpgradeStep = {
-          kind: "timelock",
-          actions: [
-            {
-              target: c.admin.address,
-              value: 0,
-              data: proxyAdmin.encodeFunctionData("upgradeAndCall", [
-                c.proxy.address,
-                bundle.bridgeImplementation,
-                iface.encodeFunctionData(init, mutated),
-              ]),
-            },
-          ],
-          predecessor: ethers.constants.HashZero,
-          salt: ethers.utils.id(`C11 wrong ${index} ${wrong}`),
-          description: "wrong address",
-        }
-        await refused(
-          `wrong-address initialization refused (${init.name} argument ${index} = ${wrong})`,
-          () => runStep(c, step)
-        )
-        expect(
-          await implementationOf(c),
-          "implementation unchanged by a refused initialization"
-        ).to.equal(before)
-      }
-    }
-    await refused("bare implementation refuses initialization", () =>
-      c.council.sendTransaction({
-        to: bundle.bridgeImplementation,
-        data: atomic!.args[2],
-      })
-    )
+      (await newGovernance.governanceDelays(0)).toString(),
+      "new BridgeGovernance governance delay equals the old one's"
+    ).to.equal((await c.oldGovernance.governanceDelays(0)).toString())
+    const minDelay = (await c.timelock.getMinDelay()).toString()
+    const from = (await ethers.provider.getBlockNumber()) + 1
     await runSteps(c, bundle.steps)
-    for (const s of [c.council, c.outsider])
-      await refused("repeated initialization refused", () =>
-        s.sendTransaction({ to: c.proxy.address, data: atomic!.args[2] })
-      )
+    const logs = await ethers.provider.getLogs({
+      fromBlock: from,
+      toBlock: "latest",
+    })
+    const emitters: Record<
+      string,
+      { label: string; abi: string[]; allowed: string[] }
+    > = {
+      [c.proxy.address.toLowerCase()]: {
+        label: "Bridge",
+        abi: ["Bridge", "TransparentUpgradeableProxy"],
+        allowed: ["Upgraded", "Initialized", "GovernanceTransferred"],
+      },
+      [c.oldGovernance.address.toLowerCase()]: {
+        label: "old BridgeGovernance",
+        abi: ["BridgeGovernance"],
+        allowed: ["BridgeGovernanceTransferStarted"],
+      },
+      [bundle.bridgeGovernance.toLowerCase()]: {
+        label: "new BridgeGovernance",
+        abi: ["BridgeGovernance"],
+        allowed: [],
+      },
+      [c.timelock.address.toLowerCase()]: {
+        label: "Timelock",
+        abi: ["Timelock"],
+        allowed: ["CallScheduled", "CallExecuted", "CallSalt"],
+      },
+      [c.admin.address.toLowerCase()]: {
+        label: "ProxyAdmin",
+        abi: ["ProxyAdmin"],
+        allowed: [],
+      },
+    }
+    const unexpected: string[] = []
+    for (const log of logs) {
+      const e = emitters[log.address.toLowerCase()]
+      if (!e) {
+        unexpected.push(`${log.address}: ${log.topics[0]}`)
+        continue
+      }
+      let name = `unknown ${log.topics[0]}`
+      for (const a of e.abi)
+        try {
+          name = new ethers.utils.Interface(await abiOf(a)).parseLog(log).name
+          break
+        } catch (err) {
+          // not this ABI
+        }
+      if (!e.allowed.includes(name)) unexpected.push(`${e.label}: ${name}`)
+      if (name === "Upgraded")
+        expect(
+          ethers.utils.getAddress(ethers.utils.hexDataSlice(log.topics[1], 12)),
+          "Upgraded to the bundle's implementation"
+        ).to.equal(ethers.utils.getAddress(bundle.bridgeImplementation))
+    }
+    expect(unexpected, "bundle steps emit only the named events").to.deep.equal(
+      []
+    )
+    expect(
+      (await c.timelock.getMinDelay()).toString(),
+      "Timelock min delay unchanged by the bundle"
+    ).to.equal(minDelay)
+    expect(
+      await c.legacy.governance(),
+      "Bridge governance is the bundle's BridgeGovernance"
+    ).to.equal(ethers.utils.getAddress(bundle.bridgeGovernance))
   })
 
   it("[1 authority] after the bundle the deployer and an outsider can change neither the implementation nor any FROST state", async () => {
@@ -1127,9 +576,15 @@ describe("C-11a FROST Bridge upgrade bundle (tbtc-v2#58, #57, #56)", function ()
     const { c: w, bundle, preFrame } = await upgraded()
     c = w
     expect(unmappedBaseViews(c), "unmapped 40a11d1d view").to.deep.equal([])
-    const reinitialized = (await newInitializers(c)).length > 0
-    const allowed = await allowedDifferences(reinitialized)
     const after = await c11Frame(c)
+    const initKey = await initializedKey()
+    const reinitialized = preFrame[initKey] !== after[initKey]
+    if (reinitialized)
+      expect(
+        await initializedVersion(c),
+        "reinitialized version > 5"
+      ).to.be.greaterThan(5)
+    const allowed = await allowedDifferences(reinitialized)
     const diff = changed(preFrame, after)
     const unexpected = diff.filter((k) => !allowed[k])
     expect(
@@ -1456,126 +911,6 @@ describe("C-11a FROST Bridge upgrade bundle (tbtc-v2#58, #57, #56)", function ()
     )
   })
 
-  for (const name of Object.keys(RECIPES))
-    it(`[5 #57] ${name}: the council succeeds through BridgeGovernance at once; everyone else is refused`, async () => {
-      const { c: w, bundle } = await upgraded()
-      c = w
-      const r = context(c, bundle)
-      await setup(r, name)
-      const args = await RECIPES[name].args(r)
-      const data = await calldata(name, args)
-      const before = await c11Frame(c)
-      for (const [who, s] of Object.entries({
-        outsider: c.outsider,
-        deployer: c.deployer,
-        "historical deployer": c.historicalDeployer,
-      }))
-        await refused(
-          `${name}: the ${who} through BridgeGovernance`,
-          () => s.sendTransaction({ to: bundle.bridgeGovernance, data }),
-          [OWNABLE_REASON]
-        )
-      for (const [who, s] of Object.entries({
-        council: c.council,
-        outsider: c.outsider,
-      }))
-        await refused(
-          `${name}: the ${who} directly on the Bridge`,
-          () => s.sendTransaction({ to: c.proxy.address, data }),
-          GOVERNANCE_REASONS
-        )
-      expect(
-        changed(before, await c11Frame(c)),
-        `${name}: frame unchanged by refusals`
-      ).to.deep.equal([])
-      await gov(r, name, args)
-      await RECIPES[name].effect(r)
-    })
-
-  it("[5 runbook] with RebateStaking still set, the installs and open gates refuse a FROST reveal (D20 precondition)", async () => {
-    const { c: w, bundle } = await upgraded()
-    c = w
-    const r = context(c, bundle)
-    const frost = await frostAt(c)
-    await gov(r, "configureFrostRegistry", [c.frostRegistry.address])
-    await gov(r, "configureFrostFunding", [
-      bundle.verifier,
-      await codehash(bundle.verifier),
-      RECORD,
-      GENESIS,
-    ])
-    const controller = await ethers.getContractAt(
-      "FrostExposureController",
-      bundle.exposureController
-    )
-    await controller
-      .connect(c.council)
-      .openBudgetPeriod(MAX_UINT64, MAX_UINT64, BUDGET_RECORD)
-    await gov(r, "installFrostExposureController", [bundle.exposureController])
-    await gov(r, "setFrostFundingGates", [true, true])
-    const y = await frostWallet(r, 0x3200)
-    const { t, fundingTx } = await frostReveal(r, y, 200000)
-    await refused(
-      "runbook without the unset: FROST reveal refused",
-      () => frost.connect(c.alias).revealFrostDeposit(t, fundingTx.tx, 0),
-      ["FROST rebate unsupported"]
-    )
-  })
-
-  it("[5 runbook] activation through the production route: retire rebated redemptions, unset RebateStaking, install registry, verifier and controller, open the gates; a FROST reveal passes the rebate check", async () => {
-    const { c: w, bundle } = await upgraded()
-    c = w
-    const r = context(c, bundle)
-    const frost = await frostAt(c)
-    const admission = await ethers.getContractAt(
-      "FrostDepositAdmission",
-      c.proxy.address
-    )
-    const { wallet: x } = await activate(r)
-    expect(
-      await c.legacy.getRebateStaking(),
-      "D20: RebateStaking unset"
-    ).to.equal(ZERO_ADDRESS)
-    const { t, fundingTx } = await frostReveal(r, x, 200000)
-    await expect(
-      frost.connect(c.alias).revealFrostDeposit(t, fundingTx.tx, 0),
-      "runbook: a FROST reveal passes the rebate check"
-    ).to.emit(admission, "FrostDepositRevealed")
-  })
-
-  it("[5 emergency] close the gates and contain through the production route", async () => {
-    const { c: w, bundle } = await upgraded()
-    c = w
-    const r = context(c, bundle)
-    const frost = await frostAt(c)
-    const { wallet: x, controller } = await activate(r, false)
-    await gov(r, "setFrostFundingGates", [false, false])
-    await controller
-      .connect(c.council)
-      .contain(ethers.utils.id("C11 emergency"))
-    await expectField(
-      r,
-      ["self", "frostFunding", "configuration", "addressesEnabled"],
-      BigInt(0),
-      "emergency: address gate closed"
-    )
-    await expectField(
-      r,
-      ["self", "frostFunding", "configuration", "revealEnabled"],
-      BigInt(0),
-      "emergency: reveal gate closed"
-    )
-    expect(await controller.contained(), "emergency: contained").to.equal(true)
-    const blocked = await frostTerms(r, x, 200000)
-    const fundingTx = transaction(
-      [[ethers.utils.id("C11 emergency funding"), 0]],
-      [{ value: 200000, script: p2tr(x.q) }]
-    )
-    await refused("emergency: FROST reveal refused", () =>
-      frost.connect(c.alias).revealFrostDeposit(blocked, fundingTx.tx, 0)
-    )
-  })
-
   it("[6 bytecode, #56] runtime code is the artifact with every link substituted; every library has code; sizes within 24,576 bytes", async () => {
     const { c: w, bundle } = await upgraded()
     c = w
@@ -1846,9 +1181,14 @@ describe("C-11a FROST Bridge upgrade bundle (tbtc-v2#58, #57, #56)", function ()
       salt: ethers.utils.id("C11 rollback"),
       description: "rollback",
     })
-    const allowed = await allowedDifferences(false)
-    delete allowed["eip1967:implementation"]
     const after = await c11Frame(c)
+    // A reinitializer's version survives the rollback: harmless, since the
+    // 40a11d1d reinitializers (2, 5) are already spent.
+    const initKey = await initializedKey()
+    const allowed = await allowedDifferences(
+      preFrame[initKey] !== after[initKey]
+    )
+    delete allowed["eip1967:implementation"]
     expect(
       changed(preFrame, after)
         .filter((k) => !allowed[k])
