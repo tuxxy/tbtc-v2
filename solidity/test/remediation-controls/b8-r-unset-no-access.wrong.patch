@@ -1,0 +1,17 @@
+diff --git a/solidity/contracts/bridge/Bridge.sol b/solidity/contracts/bridge/Bridge.sol
+index c585b447..b0782d1e 100644
+--- a/solidity/contracts/bridge/Bridge.sol
++++ b/solidity/contracts/bridge/Bridge.sol
+@@ -2043,7 +2043,11 @@ contract Bridge is
+     ///      part of the rebate mechanism wiring governed by the
+     ///      Bridge governance contract. See the bridge rebate
+     ///      governance deployment runbook for operational details.
+-    function setRebateStaking(address rebateStaking) external onlyGovernance {
++    function setRebateStaking(address rebateStaking) external {
++        require(
++            rebateStaking == address(0) || governance == msg.sender,
++            "Caller is not the governance"
++        );
+         self.setRebateStaking(rebateStaking);
+     }
+ 

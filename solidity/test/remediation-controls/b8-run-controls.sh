@@ -14,7 +14,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 
 controls=("$@")
 if [ ${#controls[@]} -eq 0 ]; then
-  fixes="b8-c1-cap-128.fix.patch+b8-c2-commit-ignores-inbound.fix.patch+b8-r-docs.fix.patch"
+  fixes="b8-c1-cap-128.fix.patch+b8-c2-commit-ignores-inbound.fix.patch+b8-r-docs.fix.patch+b8-r-unset-zero.fix.patch"
   controls=(
     "$fixes"
     b8-c1-cap-129.wrong.patch
@@ -22,6 +22,8 @@ if [ ${#controls[@]} -eq 0 ]; then
     b8-c2-closure-ignores-inbound.wrong.patch
     b8-r-no-refusal.wrong.patch
     b8-r-legacy-rebate-off-with-frost.wrong.patch
+    b8-r-unset-zero.fix.patch+b8-r-unset-no-access.wrong.patch
+    b8-r-unset-zero.fix.patch+b8-r-unset-governance-no-owner.wrong.patch
   )
 fi
 
