@@ -2043,6 +2043,8 @@ contract Bridge is
     ///      part of the rebate mechanism wiring governed by the
     ///      Bridge governance contract. See the bridge rebate
     ///      governance deployment runbook for operational details.
+    ///      While it is set, FROST deposit reveals are refused ("FROST
+    ///      rebate unsupported"); FROST deposits need it unset.
     function setRebateStaking(address rebateStaking) external onlyGovernance {
         self.setRebateStaking(rebateStaking);
     }
