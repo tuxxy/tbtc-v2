@@ -238,6 +238,12 @@ library MovingFunds {
         // that case, the system cannot accept the commitment and must provide
         // new wallets first. However, the wallet supposed to submit the
         // commitment can keep resetting the moving funds timeout until then.
+        // ADV-C1, #49: a drain names at most MAX_MOVEMENT_TARGETS targets so
+        // its proof fits the gas cap; legacy-to-legacy is not capped.
+        if (
+            drain &&
+            expectedTargetWalletsCount > FrostMovement.MAX_MOVEMENT_TARGETS
+        ) expectedTargetWalletsCount = FrostMovement.MAX_MOVEMENT_TARGETS;
         require(expectedTargetWalletsCount > 0, "No target wallets available");
 
         require(

@@ -24,6 +24,12 @@ library FrostMovement {
     using BytesLib for bytes;
 
     uint16 internal constant MAX_SWEEP_INPUTS = 128;
+    /// @dev ADV-C1, #49: a movement commitment names at most this many
+    ///      targets on both FROST routes (ECDSA-to-FROST drain and
+    ///      FROST-to-FROST), so its proof fits the 2^24 transaction gas cap.
+    ///      A source that needs more commits to this many and splits its
+    ///      value among them, so no value is stranded.
+    uint256 internal constant MAX_MOVEMENT_TARGETS = 128;
 
     event FrostMovingFundsCommitted(
         bytes32 indexed walletId,
@@ -113,6 +119,7 @@ library FrostMovement {
         uint256 expected = movement.eligibleTargets < needed
             ? movement.eligibleTargets
             : needed;
+        if (expected > MAX_MOVEMENT_TARGETS) expected = MAX_MOVEMENT_TARGETS;
         require(expected > 0, "FROST movement no target");
         require(targets.length == expected, "FROST movement target count");
         uint160 previous = 0;
