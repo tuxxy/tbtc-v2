@@ -1791,15 +1791,18 @@ contract BridgeGovernance is Ownable {
         bridge.setRedemptionWatchtower(redemptionWatchtower);
     }
 
-    /// @notice Sets the rebate staking address. This function does not
-    ///         have a governance delay as setting the rebate staking is
-    ///         a one-off action performed during initialization of the
-    ///         rebate mechanism.
-    /// @param rebateStaking Address of the rebate staking contract.
+    /// @notice Sets the rebate staking address, or unsets it with 0x0.
+    ///         This function does not have a governance delay.
+    /// @param rebateStaking Address of the rebate staking contract, or 0x0
+    ///        to unset a set address.
     /// @dev Requirements:
     ///      - The caller must be the owner,
-    ///      - The Bridge implementation is expected to enforce that the
-    ///        rebate staking address is set exactly once and is not 0x0.
+    ///      - The Bridge implementation is expected to enforce that a
+    ///        nonzero address is set only while unset and that 0x0 unsets
+    ///        only a set address.
+    ///      While rebate staking is set, FROST deposit reveals are refused;
+    ///      unsetting it opens them and ends rebates for everyone. Unset
+    ///      only when no rebated legacy redemptions are pending.
     ///
     /// @notice This function forwards the call to the underlying Bridge
     ///         implementation. If the Bridge implementation does not support

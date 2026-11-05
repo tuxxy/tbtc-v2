@@ -327,9 +327,9 @@ library BridgeState {
         // is responsible for vetoing redemption requests.
         address redemptionWatchtower;
         // Address of the rebate staking contract used by the rebate mechanism.
-        // This value is intended to be initialized exactly once via
-        // governance wiring; changing it afterwards requires a dedicated
-        // upgrade path of the Bridge implementation.
+        // Set via governance wiring; governance may unset it (0x0), which
+        // ends rebates and lets FROST deposit reveals open. Changing it to
+        // another nonzero address requires unsetting it first.
         address rebateStaking;
         // Reserved storage space in case we need to add more variables.
         // The convention from OpenZeppelin suggests the storage space should
@@ -882,25 +882,32 @@ library BridgeState {
         emit RedemptionWatchtowerSet(_redemptionWatchtower);
     }
 
-    /// @notice Sets the rebate staking address.
-    /// @param _rebateStaking Address of the rebate staking contract.
+    /// @notice Sets or unsets the rebate staking address.
+    /// @param _rebateStaking Address of the rebate staking contract, or 0x0
+    ///        to unset a set address.
     /// @dev Requirements:
-    ///      - Rebate staking address must not be already set,
-    ///      - Rebate staking address must not be 0x0.
+    ///      - A nonzero address requires rebate staking to be unset
+    ///        ("Rebate staking already set"),
+    ///      - 0x0 requires rebate staking to be set ("Rebate staking
+    ///        address must not be 0x0").
     ///
-    /// @dev This function is designed to support a one-time
-    ///      initialization of the rebate staking contract. Changing
-    ///      the rebate staking address after it is set requires a
-    ///      dedicated upgrade path.
+    /// @dev Changing a set address to another nonzero address is not
+    ///      supported. Unsetting (D20) lets FROST deposit reveals open and
+    ///      ends rebates for everyone.
     function setRebateStaking(Storage storage self, address _rebateStaking)
         internal
     {
-        require(self.rebateStaking == address(0), "Rebate staking already set");
-
-        require(
-            _rebateStaking != address(0),
-            "Rebate staking address must not be 0x0"
-        );
+        if (_rebateStaking != address(0)) {
+            require(
+                self.rebateStaking == address(0),
+                "Rebate staking already set"
+            );
+        } else {
+            require(
+                self.rebateStaking != address(0),
+                "Rebate staking address must not be 0x0"
+            );
+        }
 
         self.rebateStaking = _rebateStaking;
         emit RebateStakingSet(_rebateStaking);
