@@ -156,7 +156,8 @@ describe("C-04 approved sweep conflict resolution (synthetic inclusion component
   let genesis: string
   let terms: any
   let main: Tx
-  let other: Tx
+  // Key of the bootstrap redemption's change, spent into `main`.
+  let bootstrapChange: string
   let deposits: Tx[]
   let bootstrapId: string
   let bootstrapRequest: string
@@ -301,12 +302,11 @@ describe("C-04 approved sweep conflict resolution (synthetic inclusion component
   }
 
   async function cancellation(id: string) {
-    // Both captured R inputs, unlike S which spends only captured main + new deposit.
-    const t = transaction([main.hash, other.hash], Q, 177200, [1, 0])
+    // The captured R input, unlike S which spends captured main + new deposit.
+    const t = transaction([main.hash], Q, 177200, [main.index])
     const validator = await deploy("FrostRedemptionTransactionFixture")
     const result = await validator.validateCancellation(t.tx, Q, [
-      utxo(main, 79200),
-      utxo(other, 99000),
+      utxo(main, 178200),
     ])
     const authorization = {
       reservationId: id,
@@ -332,7 +332,12 @@ describe("C-04 approved sweep conflict resolution (synthetic inclusion component
   // Compiler-layout reads cover guards, pending reveals, request nonce and spent flags.
   async function frame(ids: string[], intentId: string, keys: string[] = []) {
     const outpoints = Array.from(
-      new Set([...deposits.map((d) => d.key), main.key, other.key, ...keys])
+      new Set([
+        ...deposits.map((d) => d.key),
+        main.key,
+        bootstrapChange,
+        ...keys,
+      ])
     )
     // Signers 0-5 are every account the suite uses. All 560 Hardhat accounts
     // would make the allowance matrix about 317,000 calls per frame.
@@ -433,17 +438,25 @@ describe("C-04 approved sweep conflict resolution (synthetic inclusion component
     // Construction order is explicit; synthetic inclusion does not assert a real signing/broadcast history.
     let t: Tx | undefined
     if (constructedBefore)
-      t = transaction([d.hash, main.hash], Q, 178200, [0, 1])
+      t = transaction([d.hash, main.hash], Q, 277200, [0, main.index])
     const ids = [await request(), await request()]
-    const r = await reserve(ids, [utxo(main, 79200), utxo(other, 99000)])
-    if (!t) t = transaction([d.hash, main.hash], Q, 178200, [0, 1])
+    const r = await reserve(ids, [utxo(main, 178200)])
+    if (!t) t = transaction([d.hash, main.hash], Q, 277200, [0, main.index])
     const c = await cancellation(r.id)
+    // D13 refinement (tuxxy/tbtc-v2#24): a late deposit waits for the
+    // reservation; no deposit-only credit lands beside the reserved main.
     const late = transaction([deposits[3].hash], Q, 99000)
     const beforeLate = await frost.frostWalletCustody(ID)
-    await frost.submitFrostDepositSweepProof(sweep(late, false))
-    const afterLate = await frost.frostWalletCustody(ID)
-    expect(afterLate.stateVersion).eq(beforeLate.stateVersion)
-    expect(afterLate.mainOutpoint).eq(main.key)
+    expect(
+      await frost.submitFrostDepositSweepProof(sweep(late, false)).then(
+        () => "accepted",
+        (e: Error) => e.message
+      ),
+      "tbtc-v2#24: the late deposit-only sweep beside the reserved main was not refused by the main guard"
+    ).to.match(/FROST sweep main (required|reserved)/)
+    expect(await frost.frostWalletCustody(ID)).deep.eq(beforeLate)
+    expect(beforeLate.mainOutpoint).eq(main.key)
+    expect((await frost.frostCustodyOutput(late.key)).walletId).eq(ZERO)
     return {
       ...r,
       ids,
@@ -561,36 +574,34 @@ describe("C-04 approved sweep conflict resolution (synthetic inclusion component
     const initialMain = transaction([deposits[0].hash], Q, 99000)
     await frost.submitFrostDepositSweepProof(sweep(initialMain, false))
     expect(await bank.balanceOf(payer.address)).eq(98000)
-    // An actual bootstrap R permits the public deposit-only recognition of other.
-    // Paying R then leaves other as non-main, independently recognized custody.
+    // A bootstrap R, paid. Under the D13 refinement (tuxxy/tbtc-v2#24) the
+    // deposit revealed meanwhile is not credited beside the reserved main; it
+    // is swept afterwards together with the payment change, so the wallet's
+    // recognized custody is one main.
     bootstrapRequest = await request()
     const bootstrap = await reserve(
       [bootstrapRequest],
       [utxo(initialMain, 99000)]
     )
     bootstrapId = bootstrap.id
-    other = transaction([deposits[1].hash], Q, 99000)
-    await frost.submitFrostDepositSweepProof(sweep(other, false))
     await frost.submitFrostRedemptionProof(
       bootstrap.id,
       bootstrap.p.transaction,
       inclusion(hashOf(bootstrap.p.transaction))
     )
     const paymentHash = hashOf(bootstrap.p.transaction)
-    main = {
-      tx: bootstrap.p.transaction,
-      hash: paymentHash,
-      key: outpoint(paymentHash),
-      index: 1,
-    }
     // Redemption change is output index 1, unlike one-output sweeps.
-    main.key = ethers.utils.solidityKeccak256(
+    bootstrapChange = ethers.utils.solidityKeccak256(
       ["bytes32", "uint32"],
-      [main.hash, 1]
+      [paymentHash, 1]
     )
-    expect((await frost.frostCustodyOutput(main.key)).value).eq(79200)
-    expect((await frost.frostCustodyOutput(other.key)).spent).eq(false)
+    expect((await frost.frostCustodyOutput(bootstrapChange)).value).eq(79200)
+    main = transaction([deposits[1].hash, paymentHash], Q, 178200, [0, 1])
+    await frost.submitFrostDepositSweepProof(sweep(main, true))
+    expect((await frost.frostCustodyOutput(bootstrapChange)).spent).eq(true)
+    expect((await frost.frostCustodyOutput(main.key)).value).eq(178200)
     expect((await frost.frostWalletCustody(ID)).value).eq(178200)
+    expect((await frost.frostWalletCustody(ID)).mainOutpoint).eq(main.key)
     vault = await deploy("FrostVaultCallbackFixture", [
       bank.address,
       bridge.address,
@@ -638,7 +649,7 @@ describe("C-04 approved sweep conflict resolution (synthetic inclusion component
     expect(await exposure.contained()).eq(true)
     await expect(reveal()).revertedWith("FROST exposure contained")
     const id = await request()
-    const r = await reserve([id], [utxo(main, 79200)])
+    const r = await reserve([id], [utxo(main, 178200)])
     await frost.submitFrostRedemptionProof(
       r.id,
       r.p.transaction,
@@ -650,7 +661,7 @@ describe("C-04 approved sweep conflict resolution (synthetic inclusion component
 
   it("C-10: cancels a reserved FROST redemption and times out another under containment, counters unchanged", async () => {
     const ids = [await request(), await request()]
-    const r = await reserve(ids, [utxo(main, 79200), utxo(other, 99000)])
+    const r = await reserve(ids, [utxo(main, 178200)])
     const c = await cancellation(r.id)
     const { read, before } = await containedFrame()
     await frost.submitFrostCancellationProof(r.id, c.t.tx, inclusion(c.t.hash))
@@ -672,7 +683,7 @@ describe("C-04 approved sweep conflict resolution (synthetic inclusion component
       constructedBefore
         ? "S constructed before R"
         : "R before S construction/confirmation"
-    }: refunds and credits once, retaining captured extra inputs, late custody and archives`, async () => {
+    }: refunds and credits once, retaining the captured input, the waiting late deposit and archives`, async () => {
       const a = await admitted(constructedBefore)
       const historical = await frost.frostReservation(a.id)
       const custody = await frost.frostWalletCustody(ID)
@@ -682,8 +693,10 @@ describe("C-04 approved sweep conflict resolution (synthetic inclusion component
         await frost.frostReservation(bootstrapId)
       )
       expect(await bank.balanceOf(bridge.address)).eq(41000)
-      expect(historical.inputs.length).eq(2)
-      expect(historical.inputs[1].txHash).eq(other.hash)
+      // D13 refinement (tuxxy/tbtc-v2#24): custody is one main, so R
+      // captures exactly that main.
+      expect(historical.inputs.length).eq(1)
+      expect(historical.inputs[0].txHash).eq(main.hash)
       // The ordinary C05 selector must still refuse the same reserved-main sweep.
       const beforeOrdinary = await frame(a.ids, a.id, [a.t.key, a.late.key])
       await expect(
@@ -796,21 +809,19 @@ describe("C-04 approved sweep conflict resolution (synthetic inclusion component
       const after = await frost.frostWalletCustody(ID)
       expect(after.stateVersion).eq(custody.stateVersion.add(1))
       expect(after.generation).eq(custody.generation)
-      expect(after.value).eq(custody.value.sub(79200).add(178200))
-      expect(after.value).eq(376200)
+      expect(after.value).eq(custody.value.sub(178200).add(277200))
+      expect(after.value).eq(277200)
       expect(after.mainOutpoint).eq(a.t.key)
       expect(after.activeReservation).eq(ZERO)
       expect(after.cancellationExposure).eq(0)
       expect((await frost.frostCustodyOutput(main.key)).spent).eq(true)
       expect(await bridge.spentMainUTXOs(main.key)).eq(true)
-      for (const t of [other, a.late]) {
-        const output = await frost.frostCustodyOutput(t.key)
-        expect(output.walletId).eq(ID)
-        expect(output.value).eq(99000)
-        expect(output.spent).eq(false)
-        expect(await bridge.spentMainUTXOs(t.key)).eq(false)
-      }
-      expect((await frost.frostCustodyOutput(a.t.key)).value).eq(178200)
+      // The late deposit waited: never credited, its funding unspent.
+      expect((await frost.frostCustodyOutput(a.late.key)).walletId).eq(ZERO)
+      expect(await bridge.spentMainUTXOs(deposits[3].key)).eq(false)
+      // Single main (tuxxy/tbtc-v2#24): custody is exactly the new main.
+      expect((await frost.frostCustodyOutput(a.t.key)).value).eq(277200)
+      expect((await frost.frostCustodyOutput(a.t.key)).value).eq(after.value)
       expect(await bridge.spentMainUTXOs(a.d.key)).eq(true)
       expect(await bridge.spentMainUTXOs(a.t.key)).eq(false)
       expect(await bank.balanceOf(payer.address)).eq(payerBefore.add(98000))
@@ -966,7 +977,7 @@ describe("C-04 approved sweep conflict resolution (synthetic inclusion component
       expect(after.generation).eq(before.generation)
       expect(after.activeReservation).eq(ZERO)
       expect(after.mainOutpoint).eq(a.t.key)
-      expect(after.value).eq(376200)
+      expect(after.value).eq(277200)
       expect(after.cancellationExposure).eq(0)
       for (const id of a.ids)
         expect((await frost.frostRedemptionRequest(id)).state).eq(6)
@@ -982,11 +993,10 @@ describe("C-04 approved sweep conflict resolution (synthetic inclusion component
       expect(await bank.balanceOf(treasury.address)).eq(
         treasuryBefore.add(2000)
       )
-      for (const t of [other, a.late]) {
-        expect((await frost.frostCustodyOutput(t.key)).spent).eq(false)
-        expect((await frost.frostCustodyOutput(t.key)).value).eq(99000)
-        expect(await bridge.spentMainUTXOs(t.key)).eq(false)
-      }
+      // The late deposit waited; custody is exactly the new main.
+      expect((await frost.frostCustodyOutput(a.late.key)).walletId).eq(ZERO)
+      expect(await bridge.spentMainUTXOs(deposits[3].key)).eq(false)
+      expect((await frost.frostCustodyOutput(a.t.key)).value).eq(after.value)
       if (contained) {
         expect((await registryWallet()).quarantined).eq(true)
         expect(
@@ -1003,16 +1013,21 @@ describe("C-04 approved sweep conflict resolution (synthetic inclusion component
     const wrongInput = transaction(
       [a.d.hash, ethers.utils.id("not the captured main")],
       Q,
-      178200
+      277200
     )
-    const wrongKey = transaction([a.d.hash, main.hash], OTHER_Q, 178200, [0, 1])
-    const duplicate = transaction(
-      [a.d.hash, main.hash, a.d.hash],
-      Q,
-      278200,
-      [0, 1, 0]
-    )
-    const excessiveFee = transaction([a.d.hash, main.hash], Q, 176199, [0, 1])
+    const wrongKey = transaction([a.d.hash, main.hash], OTHER_Q, 277200, [
+      0,
+      main.index,
+    ])
+    const duplicate = transaction([a.d.hash, main.hash, a.d.hash], Q, 377200, [
+      0,
+      main.index,
+      0,
+    ])
+    const excessiveFee = transaction([a.d.hash, main.hash], Q, 276199, [
+      0,
+      main.index,
+    ])
     for (const t of [wrongInput, wrongKey, duplicate, excessiveFee]) {
       await refuses(a, await resolution(a.id, t), [t.key, a.t.key, a.late.key])
     }
@@ -1032,7 +1047,10 @@ describe("C-04 approved sweep conflict resolution (synthetic inclusion component
       },
       [a.t.key, a.late.key]
     )
-    const unrelated = transaction([a.d.hash, main.hash], Q, 178199, [0, 1])
+    const unrelated = transaction([a.d.hash, main.hash], Q, 277199, [
+      0,
+      main.index,
+    ])
     await refuses(a, { ...a.approval, sweep: sweep(unrelated) }, [
       a.t.key,
       unrelated.key,
@@ -1139,6 +1157,15 @@ describe("C-04 approved sweep conflict resolution (synthetic inclusion component
       frost.interface.encodeFunctionData("refundResolvedFrostRedemption", [
         a.ids[0],
       ]),
+      // Moved here from Frost.PublicVaultCallback.test.ts (tuxxy/tbtc-v2#24):
+      // request/reserve reentry from a Vault callback during a C05 sweep.
+      frost.interface.encodeFunctionData("requestFrostRedemption", [
+        ID,
+        SCRIPT,
+        20000,
+        payer.address,
+      ]),
+      frost.interface.encodeFunctionData("reserveFrostRedemption", [a.p]),
     ]
     await vault.configure(payloads, false)
     const payerBefore = await bank.balanceOf(payer.address)

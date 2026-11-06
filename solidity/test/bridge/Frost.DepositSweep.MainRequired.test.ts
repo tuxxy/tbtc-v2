@@ -386,16 +386,27 @@ describe("C05 F2 required main input through the public Bridge", () => {
     expect((await frost.frostCustodyOutput(fragment.key)).walletId).to.equal(
       ZERO
     )
-    // The very same fragment is valid once a reservation exists: refusal above
-    // is the F2 predecessor rule, not a malformed transaction or proof.
+    // D13 refinement (tuxxy/tbtc-v2#24): a reservation of the main opens no
+    // deposit-only path. The very same fragment is still refused by the main
+    // guard once a reservation exists, with the complete frame unchanged.
     const reservation = child(walletNode(), "activeReservation")
     await network.provider.send("hardhat_setStorageAt", [
       bridge.address,
       ethers.utils.hexZeroPad(reservation.slot.toHexString(), 32),
       ethers.utils.id("F2 controlled active reservation"),
     ])
-    await frost.submitFrostDepositSweepProof(sweep(fragment, false))
-    expect((await frost.frostCustodyOutput(fragment.key)).value).to.equal(99000)
+    const reserved = await frame(keys)
+    expect(
+      await frost.submitFrostDepositSweepProof(sweep(fragment, false)).then(
+        () => "accepted",
+        (e: Error) => e.message
+      ),
+      "tbtc-v2#24: a deposit-only fragment beside the reserved main was not refused by the main guard"
+    ).to.match(/FROST sweep main (required|reserved)/)
+    expect(await frame(keys)).to.deep.equal(reserved)
+    expect((await frost.frostCustodyOutput(fragment.key)).walletId).to.equal(
+      ZERO
+    )
   })
 
   it("includes and replaces the unreserved main, conserving fees/credits and tombstoning every input", async () => {
@@ -464,7 +475,11 @@ describe("C05 F2 required main input through the public Bridge", () => {
     ).to.deep.equal(before)
   })
 
-  it("preserves the captured main/version while accepting proven deposit-only custody during a reservation", async () => {
+  // D13 refinement (tuxxy/tbtc-v2#24, previously "preserves the captured
+  // main/version while accepting proven deposit-only custody during a
+  // reservation"): while the main is reserved, no ordinary deposit sweep is
+  // accepted, deposit-only or claiming the main; custody stays the main alone.
+  it("refuses deposit-only and main-claiming ordinary sweeps during a reservation, preserving the captured main/version", async () => {
     const reservationID = ethers.utils.id("F2 controlled active reservation")
     const reservation = child(walletNode(), "activeReservation")
     await network.provider.send("hardhat_setStorageAt", [
@@ -473,20 +488,6 @@ describe("C05 F2 required main input through the public Bridge", () => {
       reservationID,
     ])
     const fragment = transaction([deposits[1].hash], Q, 99000)
-    await frost.submitFrostDepositSweepProof(sweep(fragment, false))
-    expect(await wallet()).to.deep.equal({
-      generation: 0,
-      stateVersion: 1,
-      value: 198000,
-      mainOutpoint: main.key,
-      activeReservation: reservationID,
-      cancellationExposure: "0",
-    })
-    expect((await frost.frostCustodyOutput(main.key)).spent).to.equal(false)
-    expect(await spent(main.key)).to.equal(false)
-    expect((await frost.frostCustodyOutput(fragment.key)).value).to.equal(99000)
-    expect(await bank.balanceOf(payer.address)).to.equal(196000)
-    expect(await bank.balanceOf(treasury.address)).to.equal(2000)
     const replacement = transaction([main.hash, deposits[2].hash], Q, 198000)
     const keys = [
       ...deposits.map((d) => d.key),
@@ -494,7 +495,31 @@ describe("C05 F2 required main input through the public Bridge", () => {
       fragment.key,
       replacement.key,
     ]
-    const before = await frame(keys)
+    let before = await frame(keys)
+    expect(
+      await frost.submitFrostDepositSweepProof(sweep(fragment, false)).then(
+        () => "accepted",
+        (e: Error) => e.message
+      ),
+      "tbtc-v2#24: a deposit-only sweep during a reservation was not refused by the main guard"
+    ).to.match(/FROST sweep main (required|reserved)/)
+    expect(await frame(keys)).to.deep.equal(before)
+    expect(await wallet()).to.deep.equal({
+      generation: 0,
+      stateVersion: 1,
+      value: 99000,
+      mainOutpoint: main.key,
+      activeReservation: reservationID,
+      cancellationExposure: "0",
+    })
+    expect((await frost.frostCustodyOutput(main.key)).spent).to.equal(false)
+    expect(await spent(main.key)).to.equal(false)
+    expect((await frost.frostCustodyOutput(fragment.key)).walletId).to.equal(
+      ZERO
+    )
+    expect(await bank.balanceOf(payer.address)).to.equal(98000)
+    expect(await bank.balanceOf(treasury.address)).to.equal(1000)
+    before = await frame(keys)
     await expect(
       frost.submitFrostDepositSweepProof(sweep(replacement, true))
     ).to.be.revertedWith("FROST sweep main reserved")

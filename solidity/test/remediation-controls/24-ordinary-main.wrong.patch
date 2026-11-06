@@ -1,0 +1,50 @@
+Wrong control for tuxxy/tbtc-v2#24: refuses deposit-only sweeps beside a
+main, but lets an ordinary sweep (no resolution authorization) spend the
+reserved main and replace it while the reservation stays active. Never
+applied in the committed tree.
+
+diff --git a/solidity/contracts/frost/FrostDepositSweep.sol b/solidity/contracts/frost/FrostDepositSweep.sol
+--- a/solidity/contracts/frost/FrostDepositSweep.sol
++++ b/solidity/contracts/frost/FrostDepositSweep.sol
+@@ -317,7 +317,10 @@
+             );
+             // credit retains the captured version while resolution is active.
+             // Keep the old nonzero main pointer until the new output is credited.
+-            if (resolutionId == bytes32(0)) balance.mainOutpoint = bytes32(0);
++            if (
++                resolutionId == bytes32(0) &&
++                balance.activeReservation == bytes32(0)
++            ) balance.mainOutpoint = bytes32(0);
+         }
+         bytes32 newKey = FrostCustody.outpointKey(txHash, 0);
+         require(
+@@ -332,6 +335,11 @@
+             0,
+             value
+         );
++        if (
++            resolutionId == bytes32(0) &&
++            bridge.frostCustody.wallets[request.walletId].activeReservation !=
++            bytes32(0)
++        ) bridge.frostCustody.wallets[request.walletId].mainOutpoint = newKey;
+         if (resolutionId != bytes32(0)) {
+             bridge.frostCustody.wallets[request.walletId].mainOutpoint = newKey;
+             if (
+@@ -385,14 +393,13 @@
+         accounting.deposits = new bytes32[](accounting.count);
+         FrostCustody.Wallet storage balance = custody.wallets[request.walletId];
+         require(
+-            request.includeMain ||
+-                balance.mainOutpoint == bytes32(0) ||
+-                balance.activeReservation != bytes32(0),
++            request.includeMain || balance.mainOutpoint == bytes32(0),
+             "FROST sweep main required"
+         );
+         if (request.includeMain)
+             require(
+-                balance.activeReservation == resolutionId &&
++                (balance.activeReservation == resolutionId ||
++                    resolutionId == bytes32(0)) &&
+                     balance.mainOutpoint != bytes32(0),
+                 "FROST sweep main reserved"
+             );

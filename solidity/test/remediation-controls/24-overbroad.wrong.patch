@@ -1,0 +1,24 @@
+Over-broad control for tuxxy/tbtc-v2#24: the fix, plus a refusal of every
+deposit sweep while the main is reserved, including the C-04 sweep-resolution
+route (proveResolution). Never applied in the committed tree.
+
+diff --git a/solidity/contracts/frost/FrostDepositSweep.sol b/solidity/contracts/frost/FrostDepositSweep.sol
+--- a/solidity/contracts/frost/FrostDepositSweep.sol
++++ b/solidity/contracts/frost/FrostDepositSweep.sol
+@@ -385,11 +385,13 @@
+         accounting.deposits = new bytes32[](accounting.count);
+         FrostCustody.Wallet storage balance = custody.wallets[request.walletId];
+         require(
+-            request.includeMain ||
+-                balance.mainOutpoint == bytes32(0) ||
+-                balance.activeReservation != bytes32(0),
++            request.includeMain || balance.mainOutpoint == bytes32(0),
+             "FROST sweep main required"
+         );
++        require(
++            balance.activeReservation == bytes32(0),
++            "FROST sweep main reserved"
++        );
+         if (request.includeMain)
+             require(
+                 balance.activeReservation == resolutionId &&
