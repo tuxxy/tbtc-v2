@@ -117,7 +117,9 @@ const TX_CAP = 16777216
 const AMOUNT = 100000
 const CREDIT = 98000
 const ROUTE = process.env.FROST_C05_GAS_ROUTE || "vault"
-const COUNTS = (process.env.FROST_C05_GAS_COUNTS || "32,64,96,128,129")
+// The cap is decided at 128 and 129. Set FROST_C05_GAS_COUNTS=32,64,96,128,129
+// when recording the C-05 F5 gas curve.
+const COUNTS = (process.env.FROST_C05_GAS_COUNTS || "128,129")
   .split(",")
   .map(Number)
 const deployed: any[] = []
