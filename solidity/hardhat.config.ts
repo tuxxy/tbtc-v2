@@ -19,6 +19,14 @@ import "solidity-docgen"
 // Load .env from tbtc-v2/ (parent of solidity/) so CHAIN_API_URL etc. are available
 loadEnv({ path: path.join(__dirname, "..", ".env") })
 
+// scripts/test-isolated.cjs runs each test file in its own process and gives
+// each one its own working directory, where OpenZeppelin upgrades keeps the
+// dev-chain manifest. Hardhat must start in the project, so the switch happens
+// here, after start-up; every Hardhat path is already absolute by now.
+if (process.env.HARDHAT_TEST_WORKDIR) {
+  process.chdir(process.env.HARDHAT_TEST_WORKDIR)
+}
+
 const ecdsaSolidityCompilerConfig = {
   version: "0.8.17",
   settings: {
@@ -297,6 +305,11 @@ const config: HardhatUserConfig = {
   },
   mocha: {
     timeout: 60_000,
+  },
+  // The gas reporter adds about a fifth to every test run; turn it on with
+  // REPORT_GAS=true when the gas table is wanted.
+  gasReporter: {
+    enabled: process.env.REPORT_GAS === "true",
   },
   typechain: {
     outDir: "typechain",
