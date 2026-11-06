@@ -13,7 +13,9 @@
 // processes sharing it reuse each other's ProxyAdmin addresses (every
 // process is chain 31337).
 //
-// usage: node scripts/test-isolated.cjs [test files...]
+// usage: node scripts/test-isolated.cjs [--suite unit|e2e] [test files...]
+//   --suite    unit: every test file not in test/suites/e2e.txt;
+//              e2e: the files in test/suites/e2e.txt (see that file)
 //   TEST_JOBS  parallel processes (default: half the CPUs, at most one per
 //              2.5 GB; on CI's 4 vCPUs, 4 jobs pushed tests past mocha's 60 s)
 const { spawn, spawnSync } = require("child_process")
@@ -39,10 +41,37 @@ function testFiles(dir) {
   return out
 }
 
+const args = process.argv.slice(2)
+let suite = "all"
+if (args[0] === "--suite") {
+  suite = args[1]
+  args.splice(0, 2)
+}
+if (!["all", "unit", "e2e"].includes(suite)) {
+  console.error(`unknown suite ${suite}: use unit or e2e`)
+  process.exit(2)
+}
+const e2e = new Set(
+  fs
+    .readFileSync(path.join(root, "test", "suites", "e2e.txt"), "utf8")
+    .split("\n")
+    .map((line) => line.replace(/#.*/, "").trim())
+    .filter(Boolean)
+)
+const all = testFiles(path.join(root, "test"))
+const missing = [...e2e].filter((file) => !all.includes(file))
+if (missing.length) {
+  console.error(
+    `test/suites/e2e.txt names no such test file:\n  ${missing.join("\n  ")}`
+  )
+  process.exit(2)
+}
 const files =
-  process.argv.length > 2
-    ? process.argv.slice(2)
-    : testFiles(path.join(root, "test"))
+  args.length > 0
+    ? args
+    : all.filter((file) =>
+        suite === "all" ? true : (suite === "e2e") === e2e.has(file)
+      )
 // Largest files first, so the slow suites do not start last.
 files.sort(
   (a, b) =>
