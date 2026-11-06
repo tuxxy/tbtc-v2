@@ -170,6 +170,73 @@ export function buildFrostUpgradeSteps(params: {
   ]
 }
 
+/** The address stored in an EIP-1967 slot of a proxy. */
+async function proxySlotAddress(
+  hre: HardhatRuntimeEnvironment,
+  proxy: string,
+  slot: string
+): Promise<string> {
+  const word = await hre.ethers.provider.getStorageAt(proxy, slot)
+  return hre.ethers.utils.getAddress(`0x${word.slice(26)}`)
+}
+
+/**
+ * Checks the inputs against the chain and throws on any mismatch:
+ * - the chain ID is the network's configured one, and on mainnet the
+ *   Timelock and the council are the known addresses;
+ * - the Bridge proxy's admin slot holds the given ProxyAdmin;
+ * - the ProxyAdmin is owned by the given Timelock;
+ * - the given BridgeGovernance is `Bridge.governance()`, owned by the
+ *   given council.
+ */
+export async function verifyFrostUpgradeInputs(
+  hre: HardhatRuntimeEnvironment,
+  inputs: FrostUpgradeInputs
+): Promise<void> {
+  const { ethers } = hre
+  const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase()
+  const refuse = (what: string, actual: string, expected: string) => {
+    throw new Error(`C-11 input refused: ${what} is ${actual}, not ${expected}`)
+  }
+
+  const chainId = Number(await hre.getChainId())
+  const expectedChainId = hre.network.config.chainId
+  if (expectedChainId !== undefined && chainId !== expectedChainId) {
+    refuse("chain ID", String(chainId), String(expectedChainId))
+  }
+  if (chainId === 1) {
+    if (!same(inputs.timelock, KNOWN_TIMELOCK))
+      refuse("mainnet Timelock", inputs.timelock, KNOWN_TIMELOCK)
+    if (!same(inputs.council, KNOWN_COUNCIL_SAFE))
+      refuse("mainnet council", inputs.council, KNOWN_COUNCIL_SAFE)
+  }
+
+  const admin = await proxySlotAddress(hre, inputs.bridge, EIP_1967_ADMIN_SLOT)
+  if (!same(admin, inputs.proxyAdmin))
+    refuse("Bridge proxy admin", admin, inputs.proxyAdmin)
+
+  const owned = (address: string) =>
+    new ethers.Contract(
+      address,
+      [
+        "function owner() view returns (address)",
+        "function governance() view returns (address)",
+      ],
+      ethers.provider
+    )
+  const adminOwner = await owned(inputs.proxyAdmin).owner()
+  if (!same(adminOwner, inputs.timelock))
+    refuse("ProxyAdmin owner", adminOwner, inputs.timelock)
+
+  const bridgeGovernance = await owned(inputs.bridge).governance()
+  if (!same(bridgeGovernance, inputs.bridgeGovernance))
+    refuse("Bridge governance", bridgeGovernance, inputs.bridgeGovernance)
+
+  const governanceOwner = await owned(inputs.bridgeGovernance).owner()
+  if (!same(governanceOwner, inputs.council))
+    refuse("BridgeGovernance owner", governanceOwner, inputs.council)
+}
+
 /**
  * Deploys the bundle's contracts from the named `deployer` and returns them
  * with the governance steps. The deployer holds no role afterwards.
@@ -188,17 +255,14 @@ export async function deployFrostBridgeUpgrade(
     waitConfirmations: 1,
   }
 
-  const slotAddress = async (slot: string) =>
-    ethers.utils.getAddress(
-      `0x${(await ethers.provider.getStorageAt(inputs.bridge, slot)).slice(26)}`
-    )
-  const proxyAdmin = await slotAddress(EIP_1967_ADMIN_SLOT)
-  if (proxyAdmin !== ethers.utils.getAddress(inputs.proxyAdmin)) {
-    throw new Error(
-      `Bridge proxy admin is ${proxyAdmin}, not ${inputs.proxyAdmin}`
-    )
-  }
-  const rollbackImplementation = await slotAddress(EIP_1967_IMPLEMENTATION_SLOT)
+  // Refuses a wrong target before anything is deployed.
+  await verifyFrostUpgradeInputs(hre, inputs)
+  const proxyAdmin = ethers.utils.getAddress(inputs.proxyAdmin)
+  const rollbackImplementation = await proxySlotAddress(
+    hre,
+    inputs.bridge,
+    EIP_1967_IMPLEMENTATION_SLOT
+  )
 
   const oldGovernance = new ethers.Contract(
     inputs.bridgeGovernance,
@@ -360,8 +424,8 @@ export async function deployFrostBridgeUpgrade(
 }
 
 const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
-  const { deployments, getNamedAccounts, ethers, helpers } = hre
-  const { deployer } = await getNamedAccounts()
+  const { deployments, getNamedAccounts, helpers } = hre
+  const { deployer, governance } = await getNamedAccounts()
 
   const exposureGovernance = process.env.FROST_EXPOSURE_GOVERNANCE
   if (!exposureGovernance) {
@@ -369,19 +433,30 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
     throw new Error("Set FROST_EXPOSURE_GOVERNANCE")
   }
 
+  // Per network, as base names them: the council is the `governance` named
+  // account (deploy 22), the Timelock is deploy 42's record. The ProxyAdmin
+  // has no record; it defaults to the known address on mainnet only.
+  const chainId = Number(await hre.getChainId())
   const Bridge = await deployments.get("Bridge")
   const BridgeGovernance = await deployments.get("BridgeGovernance")
-  const proxyAdmin = ethers.utils.getAddress(
-    `0x${(
-      await ethers.provider.getStorageAt(Bridge.address, EIP_1967_ADMIN_SLOT)
-    ).slice(26)}`
-  )
+  const timelock =
+    process.env.TIMELOCK_ADDRESS ??
+    (await deployments.getOrNull("Timelock"))?.address
+  if (!timelock) {
+    throw new Error("Set TIMELOCK_ADDRESS: no Timelock deployment record")
+  }
+  const proxyAdmin =
+    process.env.PROXY_ADMIN_ADDRESS ??
+    (chainId === 1 ? KNOWN_PROXY_ADMIN : undefined)
+  if (!proxyAdmin) {
+    throw new Error("Set PROXY_ADMIN_ADDRESS off mainnet")
+  }
   const inputs: FrostUpgradeInputs = {
     bridge: Bridge.address,
     proxyAdmin,
-    timelock: process.env.TIMELOCK_ADDRESS ?? KNOWN_TIMELOCK,
+    timelock,
     bridgeGovernance: BridgeGovernance.address,
-    council: process.env.COUNCIL_SAFE_ADDRESS ?? KNOWN_COUNCIL_SAFE,
+    council: process.env.COUNCIL_SAFE_ADDRESS ?? governance,
     exposureGovernance,
   }
 
@@ -393,12 +468,6 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   Object.entries(inputs).forEach(([key, value]) =>
     console.log(`  ${key}: ${value}`)
   )
-  if (proxyAdmin.toLowerCase() !== KNOWN_PROXY_ADMIN.toLowerCase()) {
-    console.log(
-      `  WARNING: ProxyAdmin ${proxyAdmin} is not the known ${KNOWN_PROXY_ADMIN}`
-    )
-  }
-
   const bundle = await deployFrostBridgeUpgrade(hre, inputs)
 
   console.log("\nDeployed:")
