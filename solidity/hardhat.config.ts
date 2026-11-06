@@ -306,6 +306,11 @@ const config: HardhatUserConfig = {
   mocha: {
     timeout: 60_000,
   },
+  // The gas reporter adds about a fifth to every test run; turn it on with
+  // REPORT_GAS=true when the gas table is wanted.
+  gasReporter: {
+    enabled: process.env.REPORT_GAS === "true",
+  },
   typechain: {
     outDir: "typechain",
   },
