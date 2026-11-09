@@ -358,6 +358,19 @@ describe("tbtc-v2#24 single main: no ordinary deposit sweep while the main is re
 
   /// Puts the reservation into `state` through public entrypoints.
   const reach = async (state: number, r: Reservation) => {
+    if (state === Intent.Quarantined) {
+      // Governance quarantine (public entrypoint) keeps the main reserved:
+      // activeReservation stays set while the intent is Quarantined.
+      const c = await custody()
+      await accepts("setup: quarantine", () =>
+        w.frost.quarantineFrostWallet(
+          x.id,
+          c.stateVersion,
+          ethers.utils.id("tbtc-v2#24 quarantine reason (test value)"),
+          ethers.utils.id("tbtc-v2#24 quarantine evidence (test value)")
+        )
+      )
+    }
     if (state === Intent.TimeoutPending) {
       const { deadline } = await w.frost.frostRedemptionRequest(r.requestId)
       await network.provider.send("evm_setNextBlockTimestamp", [
@@ -381,6 +394,7 @@ describe("tbtc-v2#24 single main: no ordinary deposit sweep while the main is re
   const reservedStates: [string, number][] = [
     ["Reserved", Intent.Reserved],
     ["TimeoutPending", Intent.TimeoutPending],
+    ["Quarantined", Intent.Quarantined],
   ]
   reservedStates.forEach(([name, state]) => {
     it(`refuses every ordinary deposit sweep while the main's reservation is ${name}, frame unchanged`, async () => {

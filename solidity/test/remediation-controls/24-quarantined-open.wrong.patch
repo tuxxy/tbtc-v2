@@ -1,0 +1,24 @@
+Wrong control for tuxxy/tbtc-v2#24 (from the batch-18 review, r-tb-wrong-quarantined-open):
+refuses the deposit-only side path while the reservation is Reserved or
+TimeoutPending, but admits it while the intent is Quarantined (governance
+quarantine keeps activeReservation set). Never applied in the committed tree.
+
+diff --git a/solidity/contracts/frost/FrostDepositSweep.sol b/solidity/contracts/frost/FrostDepositSweep.sol
+index 2a723039..7298d8d4 100644
+--- a/solidity/contracts/frost/FrostDepositSweep.sol
++++ b/solidity/contracts/frost/FrostDepositSweep.sol
+@@ -387,7 +387,13 @@ library FrostDepositSweep {
+         require(
+             request.includeMain ||
+                 balance.mainOutpoint == bytes32(0) ||
+-                balance.activeReservation != bytes32(0),
++                (balance.activeReservation != bytes32(0) &&
++                    bridge
++                        .frostRedemptions
++                        .ledger
++                        .intents[balance.activeReservation]
++                        .state ==
++                    FrostRedemptionLedger.IntentState.Quarantined),
+             "FROST sweep main required"
+         );
+         if (request.includeMain)
