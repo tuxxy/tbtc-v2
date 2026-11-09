@@ -1,0 +1,25 @@
+diff --git a/solidity/test/helpers/frost-legacy-bitcoin.ts b/solidity/test/helpers/frost-legacy-bitcoin.ts
+index c16842b0..a7bc5b27 100644
+--- a/solidity/test/helpers/frost-legacy-bitcoin.ts
++++ b/solidity/test/helpers/frost-legacy-bitcoin.ts
+@@ -636,9 +636,17 @@ export async function publicLegacyOriginFixture(
+   const { artifacts, ethers } = await import("hardhat")
+   // Bind to this checkout's committed sources by default. The upgraded runtime
+   // must equal HEAD exactly, so uncommitted production edits refuse.
+-  const repository =
+-    process.env.FROST_C04_LEGACY_SOURCE_ROOT ||
+-    path.resolve(__dirname, "../../..")
++  const own = path.resolve(__dirname, "../../..")
++  const repository = process.env.FROST_C04_LEGACY_SOURCE_ROOT || own
++  const headOf = (cwd: string) =>
++    execFileSync("git", ["rev-parse", "HEAD"], { cwd, timeout: 10000 })
++      .toString()
++      .trim()
++  assert.equal(
++    headOf(repository),
++    headOf(own),
++    "FROST_C04_LEGACY_SOURCE_ROOT must be at this checkout's HEAD"
++  )
+   const baselineBuild =
+     process.env.FROST_C04_LEGACY_BASELINE_BUILD ||
+     (await legacyBaselineBuild(repository))
