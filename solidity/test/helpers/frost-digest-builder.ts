@@ -45,8 +45,16 @@ function checkSchema(binary: string): void {
   assert.equal(result.txidRPC, hash.reverse().toString("hex"))
 }
 
+// An override (FROST_C04_DIGEST_BINARY, FROST_C05_DIGEST_BINARY or an
+// explicit option) is used only when FROST_C04_DIGEST_BINARY_SHA256 pins its
+// exact bytes; the schema probe alone does not identify the parser (K09-14).
 export function digestBinaryForRun(override?: string): string {
   if (override) {
+    const pin = process.env.FROST_C04_DIGEST_BINARY_SHA256
+    assert(
+      pin !== undefined && sha(fs.readFileSync(override)) === pin.toLowerCase(),
+      `digest binary override ${override} is not pinned: FROST_C04_DIGEST_BINARY / FROST_C05_DIGEST_BINARY overrides need a matching FROST_C04_DIGEST_BINARY_SHA256`
+    )
     checkSchema(override)
     return override
   }
