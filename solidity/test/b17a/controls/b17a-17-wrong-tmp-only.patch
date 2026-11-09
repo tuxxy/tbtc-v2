@@ -1,0 +1,16 @@
+diff --git a/solidity/test/helpers/frost-digest-builder.ts b/solidity/test/helpers/frost-digest-builder.ts
+index bedd101e..95cc488a 100644
+--- a/solidity/test/helpers/frost-digest-builder.ts
++++ b/solidity/test/helpers/frost-digest-builder.ts
+@@ -47,6 +47,11 @@ function checkSchema(binary: string): void {
+ 
+ export function digestBinaryForRun(override?: string): string {
+   if (override) {
++    // Wrong fix: refuses only the old /private/tmp fallback location.
++    assert(
++      !/^\/(private\/)?tmp\//.test(path.resolve(override)),
++      "FROST_C04_DIGEST_BINARY under a temporary directory"
++    )
+     checkSchema(override)
+     return override
+   }

@@ -1,0 +1,16 @@
+diff --git a/solidity/test/helpers/frost-legacy-bitcoin.ts b/solidity/test/helpers/frost-legacy-bitcoin.ts
+index c16842b0..9f78d879 100644
+--- a/solidity/test/helpers/frost-legacy-bitcoin.ts
++++ b/solidity/test/helpers/frost-legacy-bitcoin.ts
+@@ -639,6 +639,11 @@ export async function publicLegacyOriginFixture(
+   const repository =
+     process.env.FROST_C04_LEGACY_SOURCE_ROOT ||
+     path.resolve(__dirname, "../../..")
++  // Wrong fix: records the redirect in the evidence but still follows it.
++  fs.writeFileSync(
++    path.join(evidenceDirectory, "source-root.json"),
++    JSON.stringify({ repository })
++  )
+   const baselineBuild =
+     process.env.FROST_C04_LEGACY_BASELINE_BUILD ||
+     (await legacyBaselineBuild(repository))

@@ -1,0 +1,19 @@
+diff --git a/solidity/test/helpers/frost-digest-builder.ts b/solidity/test/helpers/frost-digest-builder.ts
+index bedd101e..76054fd1 100644
+--- a/solidity/test/helpers/frost-digest-builder.ts
++++ b/solidity/test/helpers/frost-digest-builder.ts
+@@ -47,8 +47,13 @@ function checkSchema(binary: string): void {
+ 
+ export function digestBinaryForRun(override?: string): string {
+   if (override) {
++    const committed = digestBinaryForRun(undefined)
++    assert(
++      sha(fs.readFileSync(override)) === sha(fs.readFileSync(committed)),
++      `FROST_C04_DIGEST_BINARY ${override} is not the committed frost-tapscript-digest.go build`
++    )
+     checkSchema(override)
+-    return override
++    return committed
+   }
+   const source = fs.readFileSync(
+     path.join(__dirname, "frost-tapscript-digest.go")

@@ -1,0 +1,18 @@
+diff --git a/solidity/test/helpers/frost-digest-builder.ts b/solidity/test/helpers/frost-digest-builder.ts
+index bedd101e..8e5005c7 100644
+--- a/solidity/test/helpers/frost-digest-builder.ts
++++ b/solidity/test/helpers/frost-digest-builder.ts
+@@ -47,7 +47,13 @@ function checkSchema(binary: string): void {
+ 
+ export function digestBinaryForRun(override?: string): string {
+   if (override) {
++    // Wrong fix: records the override's hash but still uses it unpinned.
+     checkSchema(override)
++    fs.writeFileSync(
++      `${override}.source-binding.json`,
++      JSON.stringify({ binarySHA256: sha(fs.readFileSync(override)) })
++    )
++    fs.unlinkSync(`${override}.source-binding.json`)
+     return override
+   }
+   const source = fs.readFileSync(
