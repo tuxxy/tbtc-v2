@@ -24,6 +24,12 @@ library FrostMovement {
     using BytesLib for bytes;
 
     uint16 internal constant MAX_SWEEP_INPUTS = 128;
+    /// @dev ADV-C1, #49: a movement commitment names at most this many
+    ///      targets on both FROST routes (ECDSA-to-FROST drain and
+    ///      FROST-to-FROST), so its proof fits the 2^24 transaction gas cap.
+    ///      A source that needs more commits to this many and splits its
+    ///      value among them, so no value is stranded.
+    uint256 internal constant MAX_MOVEMENT_TARGETS = 128;
 
     event FrostMovingFundsCommitted(
         bytes32 indexed walletId,
@@ -96,7 +102,9 @@ library FrostMovement {
                 !movement.lifecycles[walletId].dust,
             "FROST movement committed"
         );
-        requireClear(self, walletId);
+        // ADV-C2: an inbound commitment that is not proven yet blocks only
+        // this wallet's closure, not its own commitment.
+        requireClear(self, walletId, false);
         FrostCustody.Wallet storage custody = self.frostCustody.wallets[
             walletId
         ];
@@ -113,6 +121,7 @@ library FrostMovement {
         uint256 expected = movement.eligibleTargets < needed
             ? movement.eligibleTargets
             : needed;
+        if (expected > MAX_MOVEMENT_TARGETS) expected = MAX_MOVEMENT_TARGETS;
         require(expected > 0, "FROST movement no target");
         require(targets.length == expected, "FROST movement target count");
         uint160 previous = 0;
@@ -569,7 +578,7 @@ library FrostMovement {
                 value < self.movingFundsDustThreshold,
             "FROST movement dust state"
         );
-        requireClear(self, walletId);
+        requireClear(self, walletId, true);
         lifecycle.dust = true;
         // A terminated wallet records its dust and stays Terminated.
         if (wallet.state == FrostWallets.State.MovingFunds) {
@@ -715,11 +724,14 @@ library FrostMovement {
         return false;
     }
 
-    /// @dev Obligations that block a commitment or a dust closure.
-    function requireClear(BridgeState.Storage storage self, bytes32 walletId)
-        private
-        view
-    {
+    /// @dev Obligations that block a commitment or a dust closure. Inbound
+    ///      commitments (committed, not yet proven movements naming this
+    ///      wallet as a target) block only a closure (ADV-C2).
+    function requireClear(
+        BridgeState.Storage storage self,
+        bytes32 walletId,
+        bool closure
+    ) private view {
         // Revealed deposits do not block: a reveal is unproven on Bitcoin and
         // its refund time is the depositor's choice, so it cannot hold the
         // wallet. A late sweep of a real deposit reopens the wallet instead.
@@ -728,7 +740,8 @@ library FrostMovement {
                 bytes32(0) &&
                 self.frostRedemptions.ledger.escrow[walletId] == 0 &&
                 self.frostMovement.pendingIncoming[walletId] == 0 &&
-                self.frostMovement.inboundCommitments[walletId] == 0,
+                (!closure ||
+                    self.frostMovement.inboundCommitments[walletId] == 0),
             "FROST movement obligations"
         );
     }

@@ -1,0 +1,131 @@
+{
+  "test/bridge/Frost.CancellationAlternatives.test.ts": [
+    "FROST cancellation alternatives settles cancellation 1, refunds full gross and releases only the losing budget",
+    "FROST cancellation alternatives settles cancellation 2, refunds full gross and releases only the losing budget",
+    "FROST cancellation alternatives returns the first budget automatically on payment and permits a separate second-budget claim",
+    "FROST cancellation alternatives reserves exposure for the highest fee rather than the sum of independently funded budgets",
+    "FROST cancellation alternatives rolls back duplicate/equal/lower/over-cap/invalid-certificate/unfunded authorizations"
+  ],
+  "test/bridge/Frost.DepositSweep.test.ts": [
+    "C-05 reveal/Core wallet-leaf sweep/real Bank component creates no custody/Bank credit on reveal, then credits only after actual Core sweep SPV",
+    "C-05 reveal/Core wallet-leaf sweep/real Bank component refuses credit for an independently refunded deposit and Core rejects its pre-signed late wallet spend",
+    "C-05 reveal/Core wallet-leaf sweep/real Bank component refuses replay of a valid sweep proof without double credit or state changes",
+    "C-05 reveal/Core wallet-leaf sweep/real Bank component refuses an actual valid proof bound to a different wallet output key",
+    "C-05 reveal/Core wallet-leaf sweep/real Bank component completes a revealed obligation with a valid proof while address/reveal gates are paused",
+    "C-05 reveal/Core wallet-leaf sweep/real Bank component rolls back the full frame on a corrupted Merkle proof without a mocked validator",
+    "C-05 reveal/Core wallet-leaf sweep/real Bank component rolls back deposit/custody/Bank credit after the late treasury Bank call fails, then retries",
+    "C-05 reveal/Core wallet-leaf sweep/real Bank component does not permit Terms overrides to replace derived genesis/full wallet identity/refund keys"
+  ],
+  "test/bridge/Frost.Fraud.test.ts": [
+    "C-08 FROST fraud admission and exact defenses admits a valid signature under Q over an arbitrary digest exactly once",
+    "C-08 FROST fraud admission and exact defenses refuses invalid, foreign, wrong-message and wrong-key signatures and short bonds",
+    "C-08 FROST fraud admission and exact defenses defeats a proven key-path movement signature and pays the bond to the treasury",
+    "C-08 FROST fraud admission and exact defenses defeats an unmined movement matching its commitment exactly and refuses a variant",
+    "C-08 FROST fraud admission and exact defenses defends an unmined movement under its committed fee cap after governance lowers the cap",
+    "C-08 FROST fraud admission and exact defenses defeats a script-path deposit sweep signature on the wallet leaf only",
+    "C-08 FROST fraud admission and exact defenses defeats a payment named by an admitted intent even if it never mined",
+    "C-08 FROST fraud admission and exact defenses leaves unauthorized spends actionable; the timeout terminates the wallet and refunds the challenger",
+    "C-08 FROST fraud admission and exact defenses defends an unmined deposit sweep on the deposit's wallet leaf as a self-transfer",
+    "C-08 FROST fraud admission and exact defenses defends the key-path main input of an unmined sweep of main and a deposit within the deposit's cap only",
+    "C-08 FROST fraud admission and exact defenses defends an unmined sweep of the main and a recorded incoming output at its recorded cap",
+    "C-08 FROST fraud admission and exact defenses keeps an incoming-sweep self-transfer defensible after governance lowers movedFundsSweepTxMaxTotalFee",
+    "C-08 FROST fraud admission and exact defenses refuses self-shaped spends that leave the wallet, overpay or spend foreign inputs; they stay actionable and time out",
+    "C-08 FROST fraud admission and exact defenses measures a 128-input self-transfer defense (64 deposits, 64 key-path inputs) under the 2^24 gas cap",
+    "C-08 FROST fraud admission and exact defenses defeats an authorized heartbeat in its own domain and refuses another nonce",
+    "C-08 FROST fraud admission and exact defenses accepts call value only with the fraud bond"
+  ],
+  "test/bridge/Frost.Identity.test.ts": [
+    "FROST immutable identity and inactive Bridge keeps legacy identity, callback authority, exact output routing, and tombstones distinct",
+    "FROST immutable identity and inactive Bridge rejects changed domains, profiles, noncanonical points, and malformed descriptors",
+    "FROST immutable identity and inactive Bridge rejects cross-scheme label occupancy in both directions",
+    "FROST immutable identity and inactive Bridge keeps Q reserved across epochs, including after unfunded expiry",
+    "FROST immutable identity and inactive Bridge preserves every old storage field and populated legacy getters across the upgrade"
+  ],
+  "test/bridge/Frost.LegacyReconciliation.test.ts": [
+    "D08 legacy reconciliation piece 1: actual Core deposit and sweep spends the exact regular legacy P2WSH wallet branch into an unspent P2WPKH main output",
+    "D08 legacy reconciliation piece 1: actual Core deposit and sweep binds funding/sweep and coinbase inclusion to real Core headers and retained proofs",
+    "D08 legacy reconciliation piece 1: actual Core deposit and sweep rejects unsupported depositor/amount/ScriptNum profiles before starting Core",
+    "D08 legacy reconciliation piece 2a: public pre-upgrade origin publicly registers, reveals, proves Bank credit and escrows a pending request on pinned 40a11d1d",
+    "D08 legacy reconciliation piece 2a: public pre-upgrade origin rejects duplicate sweep credit without changing the populated legacy financial/policy frame",
+    "D08 legacy reconciliation piece 2b: signed payment across actual upgrade preserves original liabilities/policy, mines identical pre-upgrade bytes and fulfills exactly once"
+  ],
+  "test/bridge/Frost.PublicFunding.test.ts": [
+    "C-04 public Bridge funding component (controlled readiness and regtest work) funds through public registry callbacks, reveal and actual Core sweep proof only",
+    "C-04 public Bridge funding component (controlled readiness and regtest work) refuses replay through public dispatch without changing custody or Bank credits",
+    "C-04 public Bridge funding component (controlled readiness and regtest work) refuses direct or unauthorized readiness callbacks without altering the public wallet"
+  ],
+  "test/bridge/Frost.PublicGasCap.test.ts": [
+    "FROST transaction gas cap measurement measures public admission, payment and cancellation under the transaction cap"
+  ],
+  "test/bridge/Frost.PublicMaximumBatch.test.ts": [
+    "FROST maximum public proof-funded redemption batch admits and settles 64 real escrowed requests and rejects 65 distinct requests atomically"
+  ],
+  "test/bridge/Frost.PublicNegativeGuards.test.ts": [
+    "FROST A2 public negative financial guards binds every payout script to the captured request even with a fresh valid quorum signature",
+    "FROST A2 public negative financial guards enforces the captured per-request fee cap after governance raises the current cap",
+    "FROST A2 public negative financial guards requires the signed conflict outpoint to be current main custody",
+    "FROST A2 public negative financial guards requires allocated request fees to equal the actual Bitcoin fee",
+    "FROST A2 public negative financial guards rejects a quorum-signed certificate beyond the configured expiry upper bound",
+    "FROST A2 public negative financial guards rejects a quorum-signed foreign descriptor before reserving the captured request",
+    "FROST A2 public negative financial guards rejects duplicate IDs below the count cap after the first tentative Reserved transition",
+    "FROST A2 public negative financial guards rejects source-limit+1 distinct real escrowed requests atomically",
+    "FROST A2 public negative financial guards validates cancellation minimum fee against the captured reservation policy",
+    "FROST A2 public negative financial guards validates cancellation maximum fee against the captured reservation policy",
+    "FROST A2 public negative financial guards validates cancellation rate fee against the captured reservation policy",
+    "FROST A2 public negative financial guards rejects actual proven payment bytes whose locktime changes the admitted txid and snapshot",
+    "FROST A2 public negative financial guards rejects a replacement change that would strand other net liabilities before custody replacement"
+  ],
+  "test/bridge/Frost.PublicReservation.test.ts": [
+    "FROST public proof-funded request and reservation escrows proven Bank balances and captures request policy before authenticating one reservation",
+    "FROST public proof-funded request and reservation rejects unfunded allowance without moving balances, counters or custody",
+    "FROST public proof-funded request and reservation refuses a Bank or Bridge redeemer before escrow with the complete frame intact",
+    "FROST public proof-funded request and reservation rejects insufficient certificate authority with the complete frame intact",
+    "FROST public proof-funded request and reservation rolls back a duplicate request after the first tentative state transition",
+    "FROST public proof-funded request and reservation refuses a second valid reservation for the shared main custody",
+    "FROST public proof-funded request and reservation rejects signed stale counters and forged previous-output values atomically",
+    "FROST public proof-funded request and reservation enforces the shared total fee cap even when every per-request cap and operator signature passes"
+  ],
+  "test/bridge/Frost.PublicSettlement.test.ts": [
+    "FROST public payment, quarantine and cancellation settles a mined payment once, after certificate expiry, with the full financial equation",
+    "FROST public payment, quarantine and cancellation serializes deadline admission and refunds an unreserved request only after captured finality",
+    "FROST public payment, quarantine and cancellation quarantines timed-out reserved escrow and still permits proven original payment",
+    "FROST public payment, quarantine and cancellation burns an independent proven cancellation budget and refunds full escrow once",
+    "FROST public payment, quarantine and cancellation records governance containment, preserves timeout quarantine and permits the original payment",
+    "FROST public payment, quarantine and cancellation keeps authenticated cancellation and full escrow refund available under containment",
+    "FROST public payment, quarantine and cancellation rejects foreign, stale, empty and repeated containment without changing the financial frame",
+    "FROST public payment, quarantine and cancellation returns the unused cancellation budget when the original payment wins",
+    "FROST public payment, quarantine and cancellation rolls back a corrupted actual payment proof and permits a clean retry"
+  ],
+  "test/bridge/Frost.PublicSpvMaintainer.test.ts": [
+    "FROST public SPV maintainer authorization gates funding, payment and cancellation through the actual funded Bridge"
+  ],
+  "test/bridge/Frost.PublicVaultCallback.test.ts": [
+    "C-04 public Vault callback and captured watchtower boundaries credits a trusted Vault through Bank while main is reserved and rejects request/reserve reentry during C05 sweep",
+    "C-04 public Vault callback and captured watchtower boundaries rolls back all proof/deposit/custody/Bank/Vault effects on a callback-reverting late failure",
+    "C-04 public Vault callback and captured watchtower boundaries retains captured watchtower policy/delay across configuration changes and refuses the old service's veto"
+  ],
+  "test/bridge/Frost.SweepConflictResolution.Core.test.ts": [
+    "FROST actual Core sweep signed before redemption reservation mines the archived sweep and resolves/refunds once",
+    "FROST actual Core sweep signed before redemption reservation mines the archived sweep and resolves/refunds once with two cancellation budgets"
+  ],
+  "test/bridge/Frost.SweepConflictResolution.test.ts": [
+    "C-04 approved sweep conflict resolution (synthetic inclusion component) C-10: requests, reserves and pays a FROST redemption under containment, counters unchanged",
+    "C-04 approved sweep conflict resolution (synthetic inclusion component) C-10: cancels a reserved FROST redemption and times out another under containment, counters unchanged",
+    "C-04 approved sweep conflict resolution (synthetic inclusion component) S constructed before R: refunds and credits once, retaining captured extra inputs, late custody and archives",
+    "C-04 approved sweep conflict resolution (synthetic inclusion component) R before S construction/confirmation: refunds and credits once, retaining captured extra inputs, late custody and archives",
+    "C-04 approved sweep conflict resolution (synthetic inclusion component) recovers historical timeout intent after reservation expiry with fresh resolution authority and admissions disabled",
+    "C-04 approved sweep conflict resolution (synthetic inclusion component) recovers historical quarantined intent after reservation expiry with fresh resolution authority and admissions disabled",
+    "C-04 approved sweep conflict resolution (synthetic inclusion component) rejects wrong conflict input, key, proof, deposit set and fee with complete rollback",
+    "C-04 approved sweep conflict resolution (synthetic inclusion component) requires the separate exact resolution certificate and rejects replayed/foreign authority atomically",
+    "C-04 approved sweep conflict resolution (synthetic inclusion component) rolls back refunds, sponsorship, archives, custody and deposit credits when the real Bank refuses issuance",
+    "C-04 approved sweep conflict resolution (synthetic inclusion component) keeps the unauthorized-caller negative separate from cross-entrypoint reentry",
+    "C-04 approved sweep conflict resolution (synthetic inclusion component) rejects cross-entrypoint reentry from the trusted Vault after real Bank credit",
+    "C-04 approved sweep conflict resolution (synthetic inclusion component) rolls back the entire financial frame on a late Vault failure and permits the same approved proof afterward"
+  ],
+  "test/bridge/Frost.Verifier.GoOracle.test.ts": [
+    "C-07 pinned keep-core Bitcoin Go differential oracle uses the exact keep-core K-04 crypto dependency pins and a fixed seed",
+    "C-07 pinned keep-core Bitcoin Go differential oracle matches Schnorr Verify on seeded signatures, mutations and encoding boundaries",
+    "C-07 pinned keep-core Bitcoin Go differential oracle matches ComputeTaprootOutputKey on explicit roots and boundary public keys",
+    "C-07 pinned keep-core Bitcoin Go differential oracle does not interpret bytes32 zero as the empty-root BIP86 tweak"
+  ]
+}

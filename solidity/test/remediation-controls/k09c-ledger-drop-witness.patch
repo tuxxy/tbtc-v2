@@ -1,0 +1,30 @@
+diff --git a/solidity/test/k09/K09.LegacyObligations.test.ts b/solidity/test/k09/K09.LegacyObligations.test.ts
+index 17d0c37c..216abb03 100644
+--- a/solidity/test/k09/K09.LegacyObligations.test.ts
++++ b/solidity/test/k09/K09.LegacyObligations.test.ts
+@@ -586,25 +586,6 @@ describe("K-09 legacy obligations across upgrade, cutover and containment (tbtc-
+     }
+   )
+ 
+-  witness(
+-    "closing-elapsed",
+-    "closes a wallet that was Closing at the upgrade",
+-    async () => {
+-      await increaseTime(CLOSING_PERIOD + 1)
+-      await discharges(
+-        "closing-elapsed",
+-        l.bridge
+-          .connect(l.alias)
+-          .notifyWalletClosingPeriodElapsed(l.wallets.A3.pkh)
+-      )
+-      expect((await wallet("A3")).state).to.equal(LegacyState.Closed)
+-      expect(
+-        await l.registry.isWalletRegistered(l.wallets.A3.walletID)
+-      ).to.equal(false)
+-      await expectChanged(["wallet:A3", "registry:A3"])
+-    }
+-  )
+-
+   witness(
+     "fraud-defeat",
+     "defeats a challenge with the preimage of a correctly spent deposit",

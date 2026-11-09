@@ -37,6 +37,12 @@ interface IFrostFundingBridge {
         view
         returns (FrostDepositAdmission.Construction memory);
 
+    /// @notice Reveals a FROST deposit.
+    /// @dev Governance precondition: RebateStaking must be unset before FROST
+    ///      deposits open. FROST deposits get no rebate support: while the
+    ///      Bridge has a RebateStaking address, every FROST reveal reverts
+    ///      with "FROST rebate unsupported". Governance unsets it with
+    ///      `BridgeGovernance.setRebateStaking(address(0))`.
     function revealFrostDeposit(
         FrostDepositProfile.Terms calldata terms,
         BitcoinTx.Info calldata transaction,

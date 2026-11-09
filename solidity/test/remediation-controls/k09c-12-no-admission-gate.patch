@@ -1,0 +1,12 @@
+diff --git a/solidity/contracts/frost/FrostDepositAdmission.sol b/solidity/contracts/frost/FrostDepositAdmission.sol
+index 6e9d7ece..f7f655e8 100644
+--- a/solidity/contracts/frost/FrostDepositAdmission.sol
++++ b/solidity/contracts/frost/FrostDepositAdmission.sol
+@@ -58,7 +58,6 @@ library FrostDepositAdmission {
+         uint32 outputIndex
+     ) external returns (bytes32 outpoint) {
+         require(funding.configuration.revealEnabled, "FROST reveal disabled");
+-        FrostExposureState.requireAdmission(bridge.frostExposure);
+         require(!funding.entered, "FROST funding reentry");
+         require(terms.depositor == msg.sender, "FROST depositor");
+         funding.entered = true;

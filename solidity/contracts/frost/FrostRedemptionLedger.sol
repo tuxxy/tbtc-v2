@@ -319,35 +319,6 @@ library FrostRedemptionLedger {
             );
     }
 
-    /// @dev Cancellation fees have their own funded Bank budget. Burning that
-    /// budget reconciles the lost custody; request escrow refunds remain whole.
-    function cancel(
-        Storage storage self,
-        FrostCustody.Storage storage custody,
-        Bank bank,
-        bytes32 id,
-        uint64 changeValue,
-        uint32 changeIndex
-    ) internal {
-        Intent storage intent = self.intents[id];
-        require(
-            unresolved(intent) &&
-                intent.cancellationHash != bytes32(0) &&
-                intent.cancellationFee > 0,
-            "FROST cancellation not authorized"
-        );
-        cancelSelected(
-            self,
-            custody,
-            bank,
-            id,
-            intent.cancellationHash,
-            intent.cancellationFee,
-            changeValue,
-            changeIndex
-        );
-    }
-
     /// @dev Caller proves and authenticates the selected immutable alternative.
     function cancelSelected(
         Storage storage self,

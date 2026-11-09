@@ -1,0 +1,90 @@
+diff --git a/solidity/contracts/frost/FrostBridge.sol b/solidity/contracts/frost/FrostBridge.sol
+index 0b0e69fc..4cca0505 100644
+--- a/solidity/contracts/frost/FrostBridge.sol
++++ b/solidity/contracts/frost/FrostBridge.sol
+@@ -4,6 +4,7 @@ pragma solidity 0.8.17;
+ import "../bridge/BridgeState.sol";
+ import "./IFrostBridge.sol";
+ import "./FrostWallets.sol";
++import "./FrostFundingTarget.sol";
+ import "./FrostFundingConfiguration.sol";
+ import "./FrostRedemptions.sol";
+ import "./FrostRedemptionSettlement.sol";
+@@ -18,6 +19,8 @@ interface IFrostGovernance {
+ /// @notice Fixed-selector extension linked into the Bridge bytecode. There is
+ /// no user-supplied delegate target. All state stays in BridgeState's new slots.
+ library FrostBridge {
++    using FrostFundingTarget for FrostWallets.Wallet;
++
+     function dispatch(BridgeState.Storage storage self, bytes calldata input)
+         external
+         returns (bytes memory)
+@@ -486,10 +489,7 @@ library FrostBridge {
+             FrostWallets.Wallet storage w = self.frost.wallets[
+                 abi.decode(args, (bytes20))
+             ];
+-            return
+-                abi.encode(
+-                    w.state == FrostWallets.State.Live && !w.quarantined
+-                );
++            return abi.encode(w.admitsDeposits());
+         } else {
+             return FrostMovementDispatch.dispatch(self, input);
+         }
+diff --git a/solidity/contracts/frost/FrostDepositAdmission.sol b/solidity/contracts/frost/FrostDepositAdmission.sol
+index 6e9d7ece..ce13a09a 100644
+--- a/solidity/contracts/frost/FrostDepositAdmission.sol
++++ b/solidity/contracts/frost/FrostDepositAdmission.sol
+@@ -8,12 +8,14 @@ import "./FrostBitcoinEncoding.sol";
+ import {BTCUtils} from "@keep-network/bitcoin-spv-sol/contracts/BTCUtils.sol";
+ import {BytesLib} from "@keep-network/bitcoin-spv-sol/contracts/BytesLib.sol";
+ import "./FrostExposureState.sol";
++import "./FrostFundingTarget.sol";
+ 
+ /// @notice Exact C-05 deposit reveal. Reveal alone creates no Bank credit or
+ /// recognized custody; those effects require the separate sweep SPV consumer.
+ library FrostDepositAdmission {
+     using BTCUtils for bytes;
+     using BytesLib for bytes;
++    using FrostFundingTarget for FrostWallets.Wallet;
+ 
+     struct Output {
+         bytes32 key;
+@@ -219,10 +221,7 @@ library FrostDepositAdmission {
+         require(
+             wallet.id == terms.fullWalletId &&
+                 wallet.descriptorHash == terms.descriptorHash &&
+-                !wallet.quarantined &&
+-                wallet.capabilityVersion > 0 &&
+-                (wallet.state == FrostWallets.State.ReadyUnfunded ||
+-                    wallet.state == FrostWallets.State.Live),
++                wallet.admitsDeposits(),
+             "FROST deposit wallet"
+         );
+         require(
+diff --git a/solidity/contracts/frost/FrostFundingTarget.sol b/solidity/contracts/frost/FrostFundingTarget.sol
+new file mode 100644
+index 00000000..0073e996
+--- /dev/null
++++ b/solidity/contracts/frost/FrostFundingTarget.sol
+@@ -0,0 +1,20 @@
++// SPDX-License-Identifier: GPL-3.0-only
++pragma solidity 0.8.17;
++
++import "./FrostWallets.sol";
++
++/// @notice Wallet-level FROST funding-target rule, shared by the view and
++/// deposit admission.
++library FrostFundingTarget {
++    function admitsDeposits(FrostWallets.Wallet storage w)
++        public
++        view
++        returns (bool)
++    {
++        if (w.quarantined || w.capabilityVersion == 0) return false;
++        FrostWallets.State s = w.state;
++        return
++            s == FrostWallets.State.Live ||
++            s == FrostWallets.State.ReadyUnfunded;
++    }
++}

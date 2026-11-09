@@ -1,0 +1,63 @@
+diff --git a/solidity/contracts/frost/FrostBridge.sol b/solidity/contracts/frost/FrostBridge.sol
+index 0b0e69fc..6542e1fa 100644
+--- a/solidity/contracts/frost/FrostBridge.sol
++++ b/solidity/contracts/frost/FrostBridge.sol
+@@ -4,6 +4,7 @@ pragma solidity 0.8.17;
+ import "../bridge/BridgeState.sol";
+ import "./IFrostBridge.sol";
+ import "./FrostWallets.sol";
++import "./FrostDepositAdmission.sol";
+ import "./FrostFundingConfiguration.sol";
+ import "./FrostRedemptions.sol";
+ import "./FrostRedemptionSettlement.sol";
+@@ -483,12 +484,11 @@ library FrostBridge {
+                     )
+                 );
+         } else if (selector == IFrostBridge.isFrostFundingTarget.selector) {
+-            FrostWallets.Wallet storage w = self.frost.wallets[
+-                abi.decode(args, (bytes20))
+-            ];
+             return
+                 abi.encode(
+-                    w.state == FrostWallets.State.Live && !w.quarantined
++                    FrostDepositAdmission.isFundingTarget(
++                        self.frost.wallets[abi.decode(args, (bytes20))]
++                    )
+                 );
+         } else {
+             return FrostMovementDispatch.dispatch(self, input);
+diff --git a/solidity/contracts/frost/FrostDepositAdmission.sol b/solidity/contracts/frost/FrostDepositAdmission.sol
+index 6e9d7ece..d3ddd651 100644
+--- a/solidity/contracts/frost/FrostDepositAdmission.sol
++++ b/solidity/contracts/frost/FrostDepositAdmission.sol
+@@ -200,6 +200,18 @@ library FrostDepositAdmission {
+         );
+     }
+ 
++    function isFundingTarget(FrostWallets.Wallet storage wallet)
++        internal
++        view
++        returns (bool)
++    {
++        return
++            !wallet.quarantined &&
++            wallet.capabilityVersion > 0 &&
++            (wallet.state == FrostWallets.State.ReadyUnfunded ||
++                wallet.state == FrostWallets.State.Live);
++    }
++
+     function validateTerms(
+         BridgeState.Storage storage bridge,
+         FrostFundingState.Storage storage funding,
+@@ -219,10 +231,7 @@ library FrostDepositAdmission {
+         require(
+             wallet.id == terms.fullWalletId &&
+                 wallet.descriptorHash == terms.descriptorHash &&
+-                !wallet.quarantined &&
+-                wallet.capabilityVersion > 0 &&
+-                (wallet.state == FrostWallets.State.ReadyUnfunded ||
+-                    wallet.state == FrostWallets.State.Live),
++                isFundingTarget(wallet),
+             "FROST deposit wallet"
+         );
+         require(

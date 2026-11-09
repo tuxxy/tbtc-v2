@@ -129,11 +129,25 @@ contract FrostSharedCustodyLedgerFixture {
         uint64 change,
         uint32 index
     ) external onlyOwner {
-        FrostRedemptionLedger.cancel(
+        // Fixture only: the admitted cancellation, without the proof and
+        // authentication the production route (cancelSelected) requires.
+        FrostRedemptionLedger.Intent storage intent = bridge
+            .frostRedemptions
+            .ledger
+            .intents[id];
+        require(
+            FrostRedemptionLedger.unresolved(intent) &&
+                intent.cancellationHash != bytes32(0) &&
+                intent.cancellationFee > 0,
+            "FROST cancellation not authorized"
+        );
+        FrostRedemptionLedger.cancelSelected(
             bridge.frostRedemptions.ledger,
             bridge.frostCustody,
             bank,
             id,
+            intent.cancellationHash,
+            intent.cancellationFee,
             change,
             index
         );

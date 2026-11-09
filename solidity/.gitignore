@@ -20,3 +20,7 @@
 /.openzeppelin/unknown-*.json
 solcInputs/
 gasReporterOutput.json
+
+# Provisioned test tools (test/helpers/bitcoin-core/provision.cjs)
+/.tools/
+/.c11-tmp/

@@ -1,0 +1,36 @@
+diff --git a/solidity/contracts/frost/FrostBridge.sol b/solidity/contracts/frost/FrostBridge.sol
+index 0b0e69fc..77c0d191 100644
+--- a/solidity/contracts/frost/FrostBridge.sol
++++ b/solidity/contracts/frost/FrostBridge.sol
+@@ -483,12 +483,11 @@ library FrostBridge {
+                     )
+                 );
+         } else if (selector == IFrostBridge.isFrostFundingTarget.selector) {
+-            FrostWallets.Wallet storage w = self.frost.wallets[
+-                abi.decode(args, (bytes20))
+-            ];
+             return
+                 abi.encode(
+-                    w.state == FrostWallets.State.Live && !w.quarantined
++                    FrostWallets.isMovementTarget(
++                        self.frost.wallets[abi.decode(args, (bytes20))]
++                    )
+                 );
+         } else {
+             return FrostMovementDispatch.dispatch(self, input);
+diff --git a/solidity/contracts/frost/FrostDepositAdmission.sol b/solidity/contracts/frost/FrostDepositAdmission.sol
+index 6e9d7ece..5db78511 100644
+--- a/solidity/contracts/frost/FrostDepositAdmission.sol
++++ b/solidity/contracts/frost/FrostDepositAdmission.sol
+@@ -219,10 +219,7 @@ library FrostDepositAdmission {
+         require(
+             wallet.id == terms.fullWalletId &&
+                 wallet.descriptorHash == terms.descriptorHash &&
+-                !wallet.quarantined &&
+-                wallet.capabilityVersion > 0 &&
+-                (wallet.state == FrostWallets.State.ReadyUnfunded ||
+-                    wallet.state == FrostWallets.State.Live),
++                FrostWallets.isMovementTarget(wallet),
+             "FROST deposit wallet"
+         );
+         require(

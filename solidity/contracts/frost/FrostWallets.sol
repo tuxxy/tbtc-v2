@@ -200,7 +200,9 @@ library FrostWallets {
         emit FrostWalletExpired(id);
     }
 
-    /// @notice C-06 eligibility for a new movement commitment target.
+    /// @notice C-06 eligibility for a new movement commitment target. It is
+    /// also the wallet-level FROST funding-target rule shared by deposit
+    /// admission and `isFrostFundingTarget`.
     function isMovementTarget(Wallet storage w) internal view returns (bool) {
         return
             (w.state == State.ReadyUnfunded || w.state == State.Live) &&

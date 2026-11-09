@@ -1,0 +1,14 @@
+diff --git a/solidity/contracts/frost/FrostBridge.sol b/solidity/contracts/frost/FrostBridge.sol
+index 0b0e69fc..2b370822 100644
+--- a/solidity/contracts/frost/FrostBridge.sol
++++ b/solidity/contracts/frost/FrostBridge.sol
+@@ -488,7 +488,8 @@ library FrostBridge {
+             ];
+             return
+                 abi.encode(
+-                    w.state == FrostWallets.State.Live && !w.quarantined
++                    (w.state == FrostWallets.State.ReadyUnfunded ||
++                        w.state == FrostWallets.State.Live) && !w.quarantined
+                 );
+         } else {
+             return FrostMovementDispatch.dispatch(self, input);

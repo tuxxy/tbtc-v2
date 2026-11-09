@@ -1,0 +1,13 @@
+diff --git a/solidity/contracts/bridge/DepositSweep.sol b/solidity/contracts/bridge/DepositSweep.sol
+index d0c72cb4..f9677284 100644
+--- a/solidity/contracts/bridge/DepositSweep.sol
++++ b/solidity/contracts/bridge/DepositSweep.sol
+@@ -226,6 +226,8 @@ library DepositSweep {
+             totalTreasuryFee += inputsInfo.treasuryFees[i];
+         }
+ 
++        // WRONG (control): containment also stops legacy deposit sweeps.
++        FrostExposureState.requireAdmission(self.frostExposure);
+         // C-10: release a FROST drain committed against the replaced main.
+         FrostMovement.releaseDrainForMainChange(self, walletPubKeyHash);
+         // Record this sweep data and assign them to the wallet public key hash

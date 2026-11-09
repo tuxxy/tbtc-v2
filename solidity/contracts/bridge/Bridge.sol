@@ -2032,17 +2032,22 @@ contract Bridge is
         return self.txProofDifficultyFactor;
     }
 
-    /// @notice Sets the rebate staking address.
-    /// @param rebateStaking Address of the rebate staking contract.
+    /// @notice Sets or unsets the rebate staking address.
+    /// @param rebateStaking Address of the rebate staking contract, or 0x0
+    ///        to unset a set address.
     /// @dev Requirements:
     ///      - The caller must be the governance,
-    ///      - Rebate staking address must not be already set,
-    ///      - Rebate staking address must not be 0x0.
+    ///      - A nonzero address requires rebate staking to be unset,
+    ///      - 0x0 requires rebate staking to be set.
     ///
-    /// @dev This function is intended to be called exactly once as
-    ///      part of the rebate mechanism wiring governed by the
-    ///      Bridge governance contract. See the bridge rebate
+    /// @dev Setting it is part of the rebate mechanism wiring governed by
+    ///      the Bridge governance contract. See the bridge rebate
     ///      governance deployment runbook for operational details.
+    ///      While it is set, FROST deposit reveals are refused ("FROST
+    ///      rebate unsupported"); FROST deposits need it unset. Unsetting
+    ///      it ends rebates for every deposit and redemption. Unset it
+    ///      only when no rebated legacy redemptions are pending: after an
+    ///      unset, their timeouts and vetoes skip `cancelRebate`.
     function setRebateStaking(address rebateStaking) external onlyGovernance {
         self.setRebateStaking(rebateStaking);
     }

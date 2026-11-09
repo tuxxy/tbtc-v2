@@ -27,10 +27,10 @@ import {
   copyStoppedCoreTemplate,
 } from "./frost-test-isolation"
 import { compact, unsigned } from "../data/frost/deposit-profile"
+import { CORE, CORE_SHA } from "./frost-core-binary"
+import { digestBinaryForRun } from "./frost-digest-builder"
+import { LEGACY_BASELINE, legacyBaselineBuild } from "./frost-legacy-baseline"
 
-const CORE = "/private/tmp/k04-tools/bitcoin-29.0/bin"
-const CORE_SHA =
-  "f4b9d78a74643c726d022840ca506dc317d41f8825aaef80b7bb705e12c5fda8"
 const sha = (b: Buffer) => createHash("sha256").update(b).digest()
 const hash256 = (b: Buffer) => sha(sha(b))
 const hex = (b: Buffer) => `0x${b.toString("hex")}`
@@ -221,10 +221,9 @@ export async function runLegacyCoreWitness(
   const bitcoinAmount = `${satoshis / 100000000n}.${(satoshis % 100000000n)
     .toString()
     .padStart(8, "0")}`
-  const digestBinary =
-    options.digestBinary ||
-    process.env.FROST_C04_DIGEST_BINARY ||
-    "/private/tmp/c04-public-funding-20261014/frost-digest"
+  const digestBinary = digestBinaryForRun(
+    options.digestBinary || process.env.FROST_C04_DIGEST_BINARY
+  )
   assert.equal(
     sha(fs.readFileSync(path.join(CORE, "bitcoind"))).toString("hex"),
     CORE_SHA
@@ -271,13 +270,13 @@ export async function runLegacyCoreWitness(
           "-regtest",
           `-datadir=${dataDirectory}`,
           `-rpcport=${port}`,
-          "-rpcclienttimeout=5",
+          "-rpcclienttimeout=30",
           ...(wallet ? ["-rpcwallet=legacyfixture"] : []),
           method,
           ...args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))),
         ],
         {
-          timeout: 10000,
+          timeout: 45000,
           maxBuffer: 8 * 1024 * 1024,
           stdio: ["ignore", "pipe", "pipe"],
         }
@@ -383,9 +382,14 @@ export async function runLegacyCoreWitness(
     }
     assert(ready, "Core bounded startup")
     rpc("createwallet", ["legacyfixture"])
-    const miner = rpc<string>("getnewaddress", [], true)
-    for (let remaining = 101; remaining > 0; remaining -= 10)
-      rpc("generatetoaddress", [Math.min(10, remaining), miner])
+    // One coinbase funds the wallet. Every other block pays OP_TRUE, which the
+    // wallet does not own: a block that pays the wallet makes Core sync the
+    // wallet to disk, which dominated setup under parallel runs.
+    rpc("generatetoaddress", [1, rpc<string>("getnewaddress", [], true)])
+    const sink = rpc<{ descriptor: string }>("getdescriptorinfo", [
+      "raw(51)",
+    ]).descriptor
+    rpc("generatetodescriptor", [100, sink])
     const depositScript = Buffer.concat([
       Buffer.from("0020", "hex"),
       sha(witnessScript),
@@ -395,7 +399,7 @@ export async function runLegacyCoreWitness(
       ...bech32.toWords(sha(witnessScript)),
     ])
     const txid = rpc<string>("sendtoaddress", [address, bitcoinAmount], true)
-    const fundingBlock = rpc<string[]>("generatetoaddress", [1, miner])[0]
+    const fundingBlock = rpc<string[]>("generatetodescriptor", [1, sink])[0]
     const fundingTx = rpc<CoreTx>("getrawtransaction", [
       txid,
       true,
@@ -480,7 +484,7 @@ export async function runLegacyCoreWitness(
     assert.equal(mempool.allowed, true, JSON.stringify(mempool))
     const sweepTxid = rpc<string>("sendrawtransaction", [raw])
     assert.equal(sweepTxid, transaction.txidRPC)
-    const sweepBlock = rpc<string[]>("generatetoaddress", [1, miner])[0]
+    const sweepBlock = rpc<string[]>("generatetodescriptor", [1, sink])[0]
     assert.equal(rpc("gettxout", [txid, input.index]), null, "deposit consumed")
     const actualMain = rpc<{ value: number; scriptPubKey: { hex: string } }>(
       "gettxout",
@@ -621,22 +625,23 @@ type PublicLegacyOrigin = {
   deployCurrent: () => Promise<Contract>
 }
 
-// Public pre-upgrade precursor only. The 76f7905 implementation and ALL of its
-// local compiled inputs are pinned; current artifacts supply fixture/watchtower/
-// proxy wrappers only. No Bank or Bridge storage seeding is exposed.
+// Public pre-upgrade precursor only. The D1 40a11d1d implementation and ALL of
+// its local compiled inputs are pinned (built from git by default); current
+// artifacts supply fixture/watchtower/proxy wrappers only. No Bank or Bridge
+// storage seeding is exposed.
 export async function publicLegacyOriginFixture(
   evidenceDirectory: string
 ): Promise<PublicLegacyOrigin> {
   prepareEvidenceDirectory(evidenceDirectory)
   const { artifacts, ethers } = await import("hardhat")
-  const baselineBuild =
-    process.env.FROST_C04_LEGACY_BASELINE_BUILD ||
-    "/private/tmp/c05-baseline-layout-20261014/build"
   // Bind to this checkout's committed sources by default. The upgraded runtime
   // must equal HEAD exactly, so uncommitted production edits refuse.
   const repository =
     process.env.FROST_C04_LEGACY_SOURCE_ROOT ||
     path.resolve(__dirname, "../../..")
+  const baselineBuild =
+    process.env.FROST_C04_LEGACY_BASELINE_BUILD ||
+    (await legacyBaselineBuild(repository))
   const currentRevision = execFileSync("git", ["rev-parse", "HEAD"], {
     cwd: repository,
     timeout: 10000,
@@ -677,14 +682,15 @@ export async function publicLegacyOriginFixture(
   const baselineSourceHashes = Object.entries(buildInfo.input.sources)
     .filter(([name]) => name.startsWith("contracts/"))
     .map(([name, source]) => {
-      const pinned = execFileSync("git", ["show", `76f7905:solidity/${name}`], {
-        cwd: repository,
-        timeout: 10000,
-      }).toString()
+      const pinned = execFileSync(
+        "git",
+        ["show", `${LEGACY_BASELINE}:solidity/${name}`],
+        { cwd: repository, timeout: 10000, maxBuffer: 16 * 1024 * 1024 }
+      ).toString()
       assert.equal(
         source.content,
         pinned,
-        `baseline source must be 76f7905: ${name}`
+        `baseline source must be D1 40a11d1d: ${name}`
       )
       return { path: name, sha256: sha(Buffer.from(pinned)).toString("hex") }
     })
@@ -925,9 +931,9 @@ export async function publicLegacyOriginFixture(
     `${JSON.stringify(
       {
         scope:
-          "Public 76f7905 legacy callback/reveal/Core-SPV/Bank/request precursor; controlled registry, known scalar 3, zero integer regtest relay difficulty; not threshold or completed D08 qualification",
+          "Public D1 40a11d1d legacy callback/reveal/Core-SPV/Bank/request precursor; controlled registry, known scalar 3, zero integer regtest relay difficulty; not threshold or completed D08 qualification",
         productionQualification: false,
-        baselineRevision: "76f7905",
+        baselineRevision: "40a11d1d",
         baselineSourceHashes,
         baselineBuild,
         bridge: bridge.address,
@@ -1058,9 +1064,7 @@ export async function legacyPaymentPhase(
     phase === "prepare" ? witness.dataDirectory : archived?.dataDirectory
   assert(base, "stopped Core base required")
   const dataDirectory = copyStoppedCoreTemplate(base, `c04-legacy-${phase}-`)
-  const digestBinary =
-    process.env.FROST_C04_DIGEST_BINARY ||
-    "/private/tmp/c04-public-funding-20261014/frost-digest"
+  const digestBinary = digestBinaryForRun(process.env.FROST_C04_DIGEST_BINARY)
   const portLease = await reserveCorePort()
   const { port } = portLease
   const fd = fs.openSync(
@@ -1102,13 +1106,13 @@ export async function legacyPaymentPhase(
           "-regtest",
           `-datadir=${dataDirectory}`,
           `-rpcport=${port}`,
-          "-rpcclienttimeout=5",
+          "-rpcclienttimeout=30",
           ...(wallet ? ["-rpcwallet=legacyfixture"] : []),
           method,
           ...args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))),
         ],
         {
-          timeout: 10000,
+          timeout: 45000,
           maxBuffer: 8 * 1024 * 1024,
           stdio: ["ignore", "pipe", "pipe"],
         }

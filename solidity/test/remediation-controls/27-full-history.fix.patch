@@ -1,0 +1,13 @@
+diff --git a/.github/workflows/contracts.yml b/.github/workflows/contracts.yml
+index 4b4e0366..7b4c2d40 100644
+--- a/.github/workflows/contracts.yml
++++ b/.github/workflows/contracts.yml
+@@ -66,6 +66,8 @@ jobs:
+         working-directory: ./solidity
+     steps:
+       - uses: actions/checkout@v4
++        with:
++          fetch-depth: 0
+ 
+       - uses: actions/setup-node@v4
+         with:

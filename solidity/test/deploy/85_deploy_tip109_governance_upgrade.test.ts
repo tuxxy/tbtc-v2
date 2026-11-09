@@ -14,8 +14,32 @@ import func, {
   KNOWN_PROXY_ADMIN,
   KNOWN_T_TOKEN,
 } from "../../deploy/85_deploy_tip109_governance_upgrade"
+import { legacyBaselineBuild } from "../helpers/frost-legacy-baseline"
+
+// Environment (tuxxy/tbtc-v2#56). The mock-HRE cases run the script with
+// network name "hardhat", so it writes its summary JSON into
+// deployments/hardhat. Left behind, that directory (with no `.chainId`) makes
+// hardhat-deploy refuse every later fixture on a fresh checkout. Each case's
+// summaries are removed, and the directory too when this suite created it.
+const HARDHAT_DEPLOYMENTS = path.join(
+  __dirname,
+  "..",
+  "..",
+  "deployments",
+  "hardhat"
+)
 
 describe("Deploy Script 85: TIP-109 Governance Upgrade", () => {
+  const deploymentsExisted = fs.existsSync(HARDHAT_DEPLOYMENTS)
+  afterEach(() => {
+    if (!fs.existsSync(HARDHAT_DEPLOYMENTS)) return
+    fs.readdirSync(HARDHAT_DEPLOYMENTS)
+      .filter((f) => f.startsWith("tip109-deployment-") && f.endsWith(".json"))
+      .forEach((f) => fs.unlinkSync(path.join(HARDHAT_DEPLOYMENTS, f)))
+    if (!deploymentsExisted && fs.readdirSync(HARDHAT_DEPLOYMENTS).length === 0)
+      fs.rmdirSync(HARDHAT_DEPLOYMENTS)
+  })
+
   // Shared test addresses used across multiple describe blocks.
   // Deployment artifacts produced by deploy() calls.
   const DEPLOYER_ADDRESS = "0x1234567890123456789012345678901234567890"
@@ -311,13 +335,52 @@ describe("Deploy Script 85: TIP-109 Governance Upgrade", () => {
       })
     })
 
+    // Scoped to the pre-FROST artifacts (tuxxy/tbtc-v2#56). Script 85 is the
+    // TIP-109 upgrade that already ran on mainnet against the pre-FROST Bridge
+    // (tbtc-v2 main 40a11d1d, D1). It links only the six pre-FROST libraries,
+    // while this checkout's Bridge also links FrostBridge, which script 85
+    // never deploys ("invalid bytecode"). The FROST upgrade is its own script
+    // (C-11, test/c11/Frost.Upgrade.test.ts). So the deployments of Bridge,
+    // Deposit and Redemption that script 85 makes use the 40a11d1d artifacts,
+    // built from git (`legacyBaselineBuild`); everything else is unchanged.
     describe("integration: deployment on hardhat network", () => {
       let originalEnv: string | undefined
+      let preFrostHre: any
 
-      before(async () => {
+      before(async function setup() {
+        this.timeout(120000)
         originalEnv = process.env.DEPLOY_TIP109
-        process.env.DEPLOY_TIP109 = "true"
+        // The fixture runs with script 85 skipped: it is called directly below.
+        delete process.env.DEPLOY_TIP109
         await deployments.fixture()
+        process.env.DEPLOY_TIP109 = "true"
+        const build = await legacyBaselineBuild(
+          path.resolve(__dirname, "../../..")
+        )
+        const preFrost = (source: string, name: string) =>
+          JSON.parse(
+            fs.readFileSync(path.join(build, source, `${name}.json`), "utf8")
+          )
+        const artifacts: Record<string, any> = {
+          Bridge: preFrost("contracts/bridge/Bridge.sol", "Bridge"),
+          Deposit: preFrost("contracts/bridge/Deposit.sol", "Deposit"),
+          Redemption: preFrost("contracts/bridge/Redemption.sol", "Redemption"),
+        }
+        preFrostHre = {
+          ...hre,
+          deployments: {
+            ...hre.deployments,
+            deploy: (name: string, options: any) => {
+              const contract = options.contract ?? name
+              return hre.deployments.deploy(
+                name,
+                artifacts[contract]
+                  ? { ...options, contract: artifacts[contract] }
+                  : options
+              )
+            },
+          },
+        }
       })
 
       after(() => {
@@ -329,7 +392,7 @@ describe("Deploy Script 85: TIP-109 Governance Upgrade", () => {
       })
 
       it("should produce valid addresses for all deployed contracts", async () => {
-        await func(hre)
+        await func(preFrostHre)
 
         const depositArtifact = await deployments.get("Deposit")
         expect(depositArtifact.address).to.not.equal(
@@ -364,7 +427,7 @@ describe("Deploy Script 85: TIP-109 Governance Upgrade", () => {
         }
 
         try {
-          await func(hre)
+          await func(preFrostHre)
 
           const allOutput = loggedMessages.join("\n")
 

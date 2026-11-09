@@ -1,0 +1,16 @@
+diff --git a/.github/workflows/contracts.yml b/.github/workflows/contracts.yml
+index 4b4e0366..53939142 100644
+--- a/.github/workflows/contracts.yml
++++ b/.github/workflows/contracts.yml
+@@ -90,6 +90,11 @@ jobs:
+       - name: Build contracts
+         run: yarn build
+ 
++      - name: Prepare pinned Go modules
++        run: |
++          (cd test/helpers/frost-digest && go mod download all)
++          (cd test/helpers/frost-verifier-oracle && go mod download all)
++
+       # We don't want to execute the tests for dapp-friendly contracts (either
+       # when deploying from `dapp-development` or during PR checks on that branch).
+       - name: Run tests
