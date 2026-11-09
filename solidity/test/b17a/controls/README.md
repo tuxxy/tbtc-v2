@@ -1,0 +1,29 @@
+# Remediation batch 17a controls (tbtc-v2)
+
+Fixes and wrong fixes for `test/b17a/B17a.UpgradeInputs.test.ts` and the
+strengthened replay in `test/bridge/Frost.LegacyReconciliation.test.ts`
+piece 2b (tuxxy/tbtc-v2#17, #19). Apply them only to a scratch checkout:
+
+```
+test/b17a/controls/run-controls.sh <scratch solidity dir> <log dir> [control ...]
+```
+
+A control is one patch, or several joined by `+`. Helper controls run
+`test/b17a`; the contract removal control compiles and runs
+`Frost.LegacyReconciliation`.
+
+| Control                                           | Kind                                                                                                                       | Expected                                                                                                                                                                                                                               |
+| ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `b17a-17-fix-drop-override`                       | fix #17: the override is ignored; always build from the committed source                                                   | [17] passes; [19] still fails (separate issue)                                                                                                                                                                                         |
+| `b17a-17-fix-pin`                                 | fix #17: the override needs a matching `FROST_C04_DIGEST_BINARY_SHA256`                                                    | [17] passes                                                                                                                                                                                                                            |
+| `b17a-17-wrong-tmp-only`                          | refuses only overrides under `/tmp` and `/private/tmp` (the old fallback location)                                         | [17] fails at `K09-14: digestBinaryForRun used the unpinned FROST_C04_DIGEST_BINARY override`                                                                                                                                          |
+| `b17a-17-wrong-record-only`                       | records the override's hash but still uses it                                                                              | [17] fails at the same assertion                                                                                                                                                                                                       |
+| `b17a-19-fix-drop-root`                           | fix #19: the repository is always this checkout                                                                            | [19] passes (runs the whole fixture once)                                                                                                                                                                                              |
+| `b17a-19-fix-refuse-root`                         | fix #19: refuses when `FROST_C04_LEGACY_SOURCE_ROOT` is set, naming it                                                     | [19] passes in under a second                                                                                                                                                                                                          |
+| `b17a-19-wrong-needs-baseline`                    | accepts any redirect that holds 40a11d1d                                                                                   | [19] fails at `K09-19: the legacy origin fixture bound the upgraded runtime to FROST_C04_LEGACY_SOURCE_ROOT's HEAD`                                                                                                                    |
+| `b17a-19-wrong-record-root`                       | records the redirect in the evidence but still follows it                                                                  | [19] fails at the same assertion                                                                                                                                                                                                       |
+| `b17a-17-fix-drop-override+b17a-19-fix-drop-root` | both fixes                                                                                                                 | 3/3                                                                                                                                                                                                                                    |
+| `b17a-17-fix-pin+b17a-19-fix-refuse-root`         | both fixes, refusal shapes                                                                                                 | 3/3                                                                                                                                                                                                                                    |
+| `b17a-17-removal-input-guard`                     | removal control: the upgraded Bridge's "Outbound transaction input must point to the wallet's main UTXO" `require` deleted | piece 2b fails at `K09-14: a replay of the fulfilled payment with the wallet's current main was not refused at the single-consumption guard`. The pre-payment-main replay (the old control) still passes, which is the K09-14 weakness |
+
+Results: `K-09-restart/TESTS-BATCH17A.md`.

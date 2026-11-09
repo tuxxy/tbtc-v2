@@ -1,0 +1,18 @@
+diff --git a/solidity/contracts/bridge/Redemption.sol b/solidity/contracts/bridge/Redemption.sol
+index 584401a2..5f714a80 100644
+--- a/solidity/contracts/bridge/Redemption.sol
++++ b/solidity/contracts/bridge/Redemption.sol
+@@ -94,11 +94,8 @@ library OutboundTx {
+             bytes32 outpointTxHash,
+             uint32 outpointIndex
+         ) = parseWalletOutboundTxInput(walletOutboundTxInputVector);
+-        require(
+-            mainUtxo.txHash == outpointTxHash &&
+-                mainUtxo.txOutputIndex == outpointIndex,
+-            "Outbound transaction input must point to the wallet's main UTXO"
+-        );
++        // Removal control (batch 17a): the single-consumption input guard is
++        // removed; nothing else changes.
+ 
+         // Main UTXO used as an input, mark it as spent.
+         self.spentMainUTXOs[
