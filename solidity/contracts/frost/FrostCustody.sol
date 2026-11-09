@@ -34,9 +34,9 @@ library FrostCustody {
     /// No public credit setter exists. Existing outputs, including spent records,
     /// are immutable here. An existing main outpoint is never replaced by credit;
     /// clearing/replacing it requires a separate canonical spend-proof consumer.
-    /// During a reservation, additive proven deposits preserve plan generation,
-    /// version and main outpoint. The consumer must spend only captured inputs
-    /// and subtract their values, retaining all later credited outputs/value.
+    /// During a reservation, only the C-04 sweep resolution credits (the D13
+    /// refinement refuses deposit-only sweeps then); credit preserves plan
+    /// generation, version and main outpoint until the consumer resolves it.
     function credit(
         Storage storage self,
         bytes32 walletId,
