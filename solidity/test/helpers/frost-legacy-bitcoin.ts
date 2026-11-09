@@ -635,10 +635,13 @@ export async function publicLegacyOriginFixture(
   prepareEvidenceDirectory(evidenceDirectory)
   const { artifacts, ethers } = await import("hardhat")
   // Bind to this checkout's committed sources by default. The upgraded runtime
-  // must equal HEAD exactly, so uncommitted production edits refuse.
-  const repository =
-    process.env.FROST_C04_LEGACY_SOURCE_ROOT ||
-    path.resolve(__dirname, "../../..")
+  // must equal HEAD exactly, so uncommitted production edits refuse. No other
+  // repository may stand in for this checkout (K09-19).
+  assert(
+    !process.env.FROST_C04_LEGACY_SOURCE_ROOT,
+    "FROST_C04_LEGACY_SOURCE_ROOT is not supported: the upgraded runtime binds to this checkout's HEAD"
+  )
+  const repository = path.resolve(__dirname, "../../..")
   const baselineBuild =
     process.env.FROST_C04_LEGACY_BASELINE_BUILD ||
     (await legacyBaselineBuild(repository))
