@@ -219,10 +219,7 @@ library FrostDepositAdmission {
         require(
             wallet.id == terms.fullWalletId &&
                 wallet.descriptorHash == terms.descriptorHash &&
-                !wallet.quarantined &&
-                wallet.capabilityVersion > 0 &&
-                (wallet.state == FrostWallets.State.ReadyUnfunded ||
-                    wallet.state == FrostWallets.State.Live),
+                FrostWallets.isMovementTarget(wallet),
             "FROST deposit wallet"
         );
         require(

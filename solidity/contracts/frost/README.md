@@ -40,8 +40,10 @@ specification's census before the affected production gate.
 The output resolver recognizes only raw `0x5120 || Q` or the existing
 length-prefixed `0x225120 || Q` form. A known Q resolves its identity even after
 unfunded expiry; that does not confer funding eligibility. No FROST record enters
-the legacy live-wallet mapping. The explicit funding-target view returns false
-for pending, ReadyUnfunded and Closed records.
+the legacy live-wallet mapping. The explicit funding-target view returns true
+only for a ReadyUnfunded or Live wallet that is not quarantined and has
+`capabilityVersion > 0`. It calls the same helper deposit admission uses
+(`FrostWallets.isMovementTarget`), so pending and Closed records answer false.
 
 ## Authority and deadline
 
