@@ -14,7 +14,7 @@ is e2e, already listed there; the rest are unit):
 
 | File | Kind | #24 cases |
 | --- | --- | --- |
-| `test/bridge/Frost.SingleMain.test.ts` (new) | unit | 5 |
+| `test/bridge/Frost.SingleMain.test.ts` (new) | unit | 6 (Reserved, TimeoutPending and Quarantined each) |
 | `test/bridge/Frost.DepositSweep.MainRequired.test.ts` (amended) | unit | 2 |
 | `test/bridge/Frost.SweepConflictResolution.test.ts` (amended) | unit | 10 (shared `admitted` setup) |
 | `test/bridge/Frost.PublicVaultCallback.test.ts` (amended) | e2e (Bitcoin Core, Go digest) | 2 |
@@ -36,12 +36,16 @@ five files.
 ## Without any patch (branch head)
 
 `Frost.SingleMain`: 2 passing (boundary, resolution positive control),
-3 failing:
+4 failing:
 
 - Reserved: "Reserved: deposit-only sweep of one deposit: an ordinary deposit
   sweep (includeMain=false) was accepted while the main is reserved"
 - TimeoutPending: "TimeoutPending: deposit-only sweep of one deposit: ...
   was accepted while the main is reserved"
+- Quarantined (reached by governance `quarantineFrostWallet`, which keeps
+  `activeReservation` set; added after the batch-18 review, B1):
+  "Quarantined: deposit-only sweep of one deposit: ... was accepted while the
+  main is reserved"
 - end to end: "e2e: deposit-only sweep while reserved: ... was accepted while
   the main is reserved"
 
@@ -59,15 +63,17 @@ names the Vault's revert instead of "accepted"). `ExposureReset` passes (3).
 
 | Patch | Kind | Result (five files) |
 | --- | --- | --- |
-| none (branch head) | base | 9 passing, 17 failing, each at a #24 assertion (above) |
-| `24-single-main.fix.patch` (drop `\|\| activeReservation != 0` from "FROST sweep main required") | positive | 26 passing, 136 s |
-| `24-reserved-only.wrong.patch` (refuse only while the intent is `Reserved`) | removal | 23 passing, 3 failing: "TimeoutPending: deposit-only sweep of one deposit: an ordinary deposit sweep (includeMain=false) was accepted while the main is reserved", and MainRequired's "a deposit-only fragment beside the reserved main was not refused by the main guard" and "a deposit-only sweep during a reservation was not refused by the main guard" |
-| `24-ordinary-main.wrong.patch` (refuse deposit-only, but let an ordinary sweep spend and replace the reserved main) | removal | 20 passing, 6 failing: "Reserved: ordinary sweep of the deposits and the reserved main: an ordinary deposit sweep (includeMain=true) was accepted while the main is reserved", the same for TimeoutPending, "e2e: ordinary main sweep while reserved: ... (includeMain=true) was accepted", and three `revertedWith` checks |
-| `24-overbroad.wrong.patch` (fix, plus refuse every sweep while reserved, including the resolution route) | over-broad | 14 passing, 12 failing: "C-04 sweep resolution: the approved resolution sweep of the reserved main: refused (... 'FROST sweep main reserved')", and the resolution cases of SweepConflictResolution and PublicVaultCallback |
-| `24-no-main.wrong.patch` (every deposit sweep must claim a main) | over-broad | 0 passing, 9 failing: 5 at "boundary: a no-main wallet's first deposit-only sweep is accepted: refused (... 'FROST sweep main required')", 4 in setup hooks |
+| none (branch head) | base | 9 passing, 18 failing, each at a #24 assertion (above) |
+| `24-single-main.fix.patch` (drop `\|\| activeReservation != 0` from "FROST sweep main required") | positive | 27 passing, 117 s |
+| `r-tb-fix-entry`, `r-tb-fix-separate-guard` (the batch-18 reviewer's fixes of other shapes; patches in the review record) | positive | 27 passing each |
+| `24-reserved-only.wrong.patch` (refuse only while the intent is `Reserved`) | removal | 4 failing: "TimeoutPending: ..." and "Quarantined: deposit-only sweep of one deposit: an ordinary deposit sweep (includeMain=false) was accepted while the main is reserved", and MainRequired's "a deposit-only fragment beside the reserved main was not refused by the main guard" and "a deposit-only sweep during a reservation was not refused by the main guard" |
+| `24-quarantined-open.wrong.patch` (the reviewer's: refused except while `Quarantined`) | removal | 1 failing: "Quarantined: deposit-only sweep of one deposit: ... was accepted while the main is reserved" (26 passing without the Quarantined case: review B1) |
+| `24-ordinary-main.wrong.patch` (refuse deposit-only, but let an ordinary sweep spend and replace the reserved main) | removal | 7 failing: "<state>: ordinary sweep of the deposits and the reserved main: an ordinary deposit sweep (includeMain=true) was accepted while the main is reserved" for Reserved, TimeoutPending and Quarantined, "e2e: ordinary main sweep while reserved: ...", and three `revertedWith` checks |
+| `24-overbroad.wrong.patch` (fix, plus refuse every sweep while reserved, including the resolution route) | over-broad | 12 failing: "C-04 sweep resolution: the approved resolution sweep of the reserved main: refused (... 'FROST sweep main reserved')", and the resolution cases of SweepConflictResolution and PublicVaultCallback |
+| `24-no-main.wrong.patch` (every deposit sweep must claim a main) | over-broad | 10 failing: 6 at "boundary: a no-main wallet's first deposit-only sweep is accepted: refused (... 'FROST sweep main required')", 4 in setup hooks |
 
 Cross-repository wrong fixes: a host-only fix leaves this tree as it is (the
-17 base failures); a Bridge-only fix leaves the keep-core tests
+18 base failures); a Bridge-only fix leaves the keep-core tests
 (tuxxy/keep-core#105) failing.
 
 Other suites under the fix (none changed except ExposureReset's setup): every
@@ -83,7 +89,7 @@ after a Bitcoin Core `before all`; ExposureReset 0.4 s; SweepConflictResolution
 0.5-7.6 s, except "requires the separate exact resolution certificate and
 rejects replayed/foreign authority atomically" at 15.6 s (over the 10 s case
 budget; the compiler-layout frame reads, unchanged here). The five files take
-about 136 s in one process, over the 2 min suite budget; run as separate
+about 117-136 s in one process, at or over the 2 min suite budget; run as separate
 processes they take about 60 s wall.
 
 The refusal assertions accept either existing main-guard reason
