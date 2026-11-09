@@ -18,7 +18,7 @@
 // Cases:
 // - REAL: wallets reached through the public registry callbacks (FIXTURE
 //   registry, as every FROST component test): RegisteredPendingReady,
-//   ReadyUnfunded, Closed (expired).
+//   ReadyUnfunded, ReadyUnfunded past its readiness deadline, Closed (expired).
 // - MATRIX: every FrostWallets.State value x quarantined {false, true} x
 //   capabilityVersion {0, 1, 2^32-1}. FIXTURE: the three fields are written
 //   into the real ReadyUnfunded wallet's storage (slot from the compiler's
@@ -27,8 +27,10 @@
 // - Admission is the reference: both admission entrypoints that run the wallet
 //   check (`frostDepositOutput`, `revealFrostDeposit` via eth_call) must answer
 //   the rule above, so making the two agree by narrowing admission fails.
-// - SHARED: the view's dispatch branch and `validateTerms` call one common FROST
-//   library function and neither compares wallet states inline.
+// - SHARED: the view's dispatch branch and the body of `validateTerms` reach
+//   one common function declared in contracts/frost (calls followed through
+//   contracts/frost bodies, up to 3 levels) and neither excerpt compares wallet
+//   states inline.
 // - CONSTRAINTS (issue and brief): no Bridge or MovingFunds bytes added, Bridge
 //   storage layout unchanged.
 import { artifacts, ethers, network } from "hardhat"
@@ -437,6 +439,22 @@ describe("B14 isFrostFundingTarget agrees with FROST deposit admission (tuxxy/tb
       await agree()
     })
 
+    // Review N1: the readiness deadline binds only RegisteredPendingReady;
+    // admission still accepts a ready wallet after it, so the view must too.
+    it("ReadyUnfunded mined past its readiness deadline: admitted by both", async () => {
+      await restore("ready")
+      const now = await ethers.provider.getBlockNumber()
+      await network.provider.send("hardhat_mine", [
+        `0x${(deadline - now + 1).toString(16)}`,
+      ])
+      expect(
+        await ethers.provider.getBlockNumber(),
+        "setup: past the deadline"
+      ).gt(deadline)
+      expect((await wallet()).state, "setup: still ReadyUnfunded").eq(3)
+      await agree()
+    })
+
     it("Closed after expiry: refused by both", async () => {
       await restore("pending")
       const now = await ethers.provider.getBlockNumber()
@@ -480,28 +498,63 @@ describe("B14 isFrostFundingTarget agrees with FROST deposit admission (tuxxy/tb
     function source(file: string) {
       return fs.readFileSync(path.join(SOLIDITY, "contracts", file), "utf8")
     }
-    // Function names declared in the FROST contracts (contracts/frost).
+    // The text between a function's opening "{" and its matching "}", from
+    // the declaration at `at`; null for a declaration without a body.
+    function body(text: string, at: number): string | null {
+      const open = text.indexOf("{", at)
+      const semi = text.indexOf(";", at)
+      if (open < 0 || (semi >= 0 && semi < open)) return null
+      let depth = 0
+      for (let i = open; i < text.length; i++) {
+        if (text[i] === "{") depth += 1
+        else if (text[i] === "}") {
+          depth -= 1
+          if (depth === 0) return text.slice(open + 1, i)
+        }
+      }
+      return null
+    }
+    // Every function declared in the FROST contracts (contracts/frost), by
+    // name, with the bodies of all its declarations.
     function declared() {
       const dir = path.join(SOLIDITY, "contracts", "frost")
-      const names = new Set<string>()
-      for (const f of fs.readdirSync(dir).filter((x) => x.endsWith(".sol")))
-        for (const m of source(path.join("frost", f)).matchAll(
-          /\bfunction\s+(\w+)\s*\(/g
-        ))
-          names.add(m[1])
-      return names
+      const bodies = new Map<string, string[]>()
+      for (const f of fs.readdirSync(dir).filter((x) => x.endsWith(".sol"))) {
+        const text = source(path.join("frost", f))
+        for (const m of text.matchAll(/\bfunction\s+(\w+)\s*\(/g)) {
+          const b = body(text, m.index! + m[0].length)
+          if (!bodies.has(m[1])) bodies.set(m[1], [])
+          if (b !== null) bodies.get(m[1])!.push(b)
+        }
+      }
+      return bodies
     }
-    // The FROST functions called in a code excerpt, by name.
-    function calls(text: string) {
-      const frostNames = declared()
-      return new Set(
-        [...text.matchAll(/\b(\w+)\s*\(/g)]
+    // The FROST functions an excerpt reaches: its direct calls to functions
+    // declared in contracts/frost, followed through their bodies, up to
+    // CALL_DEPTH levels (review B1: a correct fix may reach the helper through
+    // a private wrapper on either side).
+    const CALL_DEPTH = 3
+    function reaches(text: string) {
+      const frost = declared()
+      const direct = (t: string) =>
+        [...t.matchAll(/\b(\w+)\s*\(/g)]
           .map((m) => m[1])
-          .filter((name) => frostNames.has(name))
-      )
+          .filter((name) => frost.has(name))
+      const seen = new Set<string>()
+      let frontier = direct(text)
+      for (let depth = 1; depth <= CALL_DEPTH && frontier.length > 0; depth++) {
+        const next: string[] = []
+        for (const name of frontier)
+          if (!seen.has(name)) {
+            seen.add(name)
+            for (const b of frost.get(name)!) next.push(...direct(b))
+          }
+        frontier = next
+      }
+      return seen
     }
 
-    it("the view's dispatch branch and validateTerms call one common FROST library function and compare no wallet state inline", async () => {
+    it("the view's dispatch branch and validateTerms reach one common FROST library function and compare no wallet state inline", async () => {
       // The view stays in a FROST library dispatch (no Bridge bytes may be
       // added), so it is found by its selector in contracts/frost.
       const frostDir = path.join(SOLIDITY, "contracts", "frost")
@@ -522,9 +575,12 @@ describe("B14 isFrostFundingTarget agrees with FROST deposit admission (tuxxy/tb
       const admissionText = source("frost/FrostDepositAdmission.sol")
       const vt = admissionText.indexOf("function validateTerms(")
       expect(vt, "SHARED: validateTerms present").gte(0)
-      const vtTail = admissionText.slice(vt + 1)
-      const vtEnd = vtTail.search(/\n {4}function |\n}/)
-      const validateTerms = vtTail.slice(0, vtEnd < 0 ? undefined : vtEnd)
+      // Review N2: only the body, so the declaration is not a "call".
+      const validateTerms = body(
+        admissionText,
+        vt + "function validateTerms(".length
+      )
+      expect(validateTerms, "SHARED: validateTerms body").not.eq(null)
 
       const inline =
         /State\s*\.\s*(Unknown|Candidate|RegisteredPendingReady|ReadyUnfunded|Live|MovingFunds|Closing|Closed|Terminated)\b/
@@ -533,16 +589,16 @@ describe("B14 isFrostFundingTarget agrees with FROST deposit admission (tuxxy/tb
         `F-1 shared helper: the isFrostFundingTarget branch in ${viewFile} compares wallet states inline instead of calling the helper admission uses`
       ).eq(false)
       expect(
-        inline.test(validateTerms),
+        inline.test(validateTerms!),
         "F-1 shared helper: FrostDepositAdmission.validateTerms compares wallet states inline instead of calling the helper the view uses"
       ).eq(false)
-      const viewCalls = calls(viewBranch)
-      const shared = [...calls(validateTerms)].filter((name) =>
-        viewCalls.has(name)
+      const viewReaches = reaches(viewBranch)
+      const shared = [...reaches(validateTerms!)].filter((name) =>
+        viewReaches.has(name)
       )
       expect(
         shared.length,
-        "F-1 shared helper: the view and validateTerms call no common function"
+        `F-1 shared helper: the view and validateTerms reach no common FROST function within ${CALL_DEPTH} calls`
       ).gt(0)
     })
   })
