@@ -20,6 +20,10 @@ if [ ${#controls[@]} -eq 0 ]; then
     b14-view-inline-copy.wrong.patch
     b14-admission-live-only.wrong.patch
     b14-shared-helper.fix.patch+b14-storage-field.wrong.patch
+    b14-review-r1-linked-helper.fix.patch
+    b14-review-r2-admission-helper.fix.patch
+    b14-review-r3-private-wrapper.fix.patch
+    b14-review-w1-view-deadline.wrong.patch
   )
 fi
 
@@ -37,6 +41,7 @@ for c in "${controls[@]}"; do
   npx hardhat test --no-compile test/b14/*.test.ts > "$logs/$name.log" 2>&1 || true
   grep -E "^ +[0-9]+ (passing|failing|pending)|AssertionError" "$logs/$name.log" | cut -c1-240 || true
   git checkout -- .
+  git clean -fdq -- contracts
 done
 # Leave the scratch build at the head again.
 npx hardhat compile --quiet > "$logs/restore.compile.log" 2>&1
