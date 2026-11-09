@@ -429,6 +429,14 @@ describe("D08 legacy reconciliation piece 2b: signed payment across actual upgra
     )
     const fulfilledFrame = await frame()
     const fulfilledSlots = await oldSlots()
+    // Replay controls (remediation batch 17a, Refs tuxxy/tbtc-v2#17, K09-14).
+    // Invariant: the fulfilled payment cannot be proven twice, and the
+    // control shows it at the single-consumption guard. A replay with the
+    // pre-payment main stops at argument validation ("Invalid main UTXO
+    // data"), before any consumption check, so it proves nothing about single
+    // consumption. The owning replay passes the wallet's current main (the
+    // change output) and must be refused because the payment's input is no
+    // longer the wallet's main: the main it spent was consumed.
     await expect(
       f.bridge
         .connect(f.maintainer)
@@ -437,8 +445,27 @@ describe("D08 legacy reconciliation piece 2b: signed payment across actual upgra
           mined.proof,
           f.witness.mainUTXO,
           f.witness.wallet.pubKeyHash
-        )
-    ).reverted
+        ),
+      "K09-14: a replay with the pre-payment main must stop at main UTXO validation"
+    ).revertedWith("Invalid main UTXO data")
+    const currentMain = {
+      txHash: paymentHash,
+      txOutputIndex: 1,
+      txOutputValue: 79200,
+    }
+    await expect(
+      f.bridge
+        .connect(f.maintainer)
+        .submitRedemptionProof(
+          prepared.archive.transaction,
+          mined.proof,
+          currentMain,
+          f.witness.wallet.pubKeyHash
+        ),
+      "K09-14: a replay of the fulfilled payment with the wallet's current main was not refused at the single-consumption guard"
+    ).revertedWith(
+      "Outbound transaction input must point to the wallet's main UTXO"
+    )
     expect(await frame()).eq(fulfilledFrame)
     expect(await oldSlots()).deep.eq(fulfilledSlots)
     const manifest = {

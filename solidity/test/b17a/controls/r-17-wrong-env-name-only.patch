@@ -1,0 +1,15 @@
+diff --git a/solidity/test/helpers/frost-digest-builder.ts b/solidity/test/helpers/frost-digest-builder.ts
+index bedd101e..c7490e73 100644
+--- a/solidity/test/helpers/frost-digest-builder.ts
++++ b/solidity/test/helpers/frost-digest-builder.ts
+@@ -47,6 +47,10 @@ function checkSchema(binary: string): void {
+ 
+ export function digestBinaryForRun(override?: string): string {
+   if (override) {
++    assert(
++      process.env.FROST_C04_DIGEST_BINARY !== override,
++      "FROST_C04_DIGEST_BINARY is not supported"
++    )
+     checkSchema(override)
+     return override
+   }

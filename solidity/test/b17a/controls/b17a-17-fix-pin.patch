@@ -1,0 +1,16 @@
+diff --git a/solidity/test/helpers/frost-digest-builder.ts b/solidity/test/helpers/frost-digest-builder.ts
+index bedd101e..62807747 100644
+--- a/solidity/test/helpers/frost-digest-builder.ts
++++ b/solidity/test/helpers/frost-digest-builder.ts
+@@ -47,6 +47,11 @@ function checkSchema(binary: string): void {
+ 
+ export function digestBinaryForRun(override?: string): string {
+   if (override) {
++    const pin = process.env.FROST_C04_DIGEST_BINARY_SHA256
++    assert(
++      pin !== undefined && sha(fs.readFileSync(override)) === pin,
++      "FROST_C04_DIGEST_BINARY must be pinned by FROST_C04_DIGEST_BINARY_SHA256"
++    )
+     checkSchema(override)
+     return override
+   }
