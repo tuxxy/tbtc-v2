@@ -8,18 +8,23 @@
 // pin is never used silently. Concretely:
 // - [17] the legacy transaction parser (`frost-digest`) is the binary built
 //   from the committed frost-tapscript-digest.go, or an override pinned by
-//   hash; an unpinned FROST_C04_DIGEST_BINARY override is refused (the refusal
-//   names the variable) or ignored, never used on a schema check alone
-//   (K09-14: "pin and record the binary as the runner does for the worker").
+//   hash; an unpinned override is refused (the refusal names the variable or
+//   says the override is unpinned) or ignored, never used on a schema check
+//   alone (K09-14: "pin and record the binary as the runner does for the
+//   worker"). That holds whether the override comes from
+//   FROST_C04_DIGEST_BINARY, with no pin or a wrong pin, or is passed
+//   directly (options.digestBinary, or FROST_C05_DIGEST_BINARY as
+//   frost-bitcoin.ts and the Frost.Fraud tests pass it).
 // - [19] the "upgraded runtime equals HEAD" binding of the legacy origin
 //   fixture is this checkout's HEAD; FROST_C04_LEGACY_SOURCE_ROOT cannot
 //   redirect it to another repository (K09-19: it "silently redirects the
 //   repository behind the current runtime equals HEAD binding").
 //
-// Kinds: [17] cases are unit (one local `go build`, no chain); the [19] case
-// is e2e (Hardhat network and pinned Bitcoin Core through the legacy origin
-// fixture). A refusal design keeps [19] under a second; a design that ignores
-// the variable runs the whole fixture once (about 10-15 s).
+// Kinds (tuxxy/keep-core#134's rule): all cases are e2e. [17] runs `go build`
+// and child processes, with no chain. [19] uses the Hardhat network and the
+// pinned Bitcoin Core through the legacy origin fixture. A refusal design
+// keeps [19] under a second. A design that ignores the variable runs the
+// whole fixture once, about 8 s with the baseline warmed in `before`.
 import { expect } from "chai"
 import { execFileSync } from "child_process"
 import { createHash } from "crypto"
@@ -28,6 +33,7 @@ import os from "os"
 import path from "path"
 
 import { digestBinaryForRun } from "../helpers/frost-digest-builder"
+import { legacyBaselineBuild } from "../helpers/frost-legacy-baseline"
 import { publicLegacyOriginFixture } from "../helpers/frost-legacy-bitcoin"
 
 const checkout = path.resolve(__dirname, "../../..")
@@ -60,42 +66,80 @@ async function withEnv<T>(
 }
 
 describe("B17a upgrade-stage inputs (K09-14, K09-19)", () => {
-  describe("[17] digest parser pin (unit)", () => {
-    it("never uses an unpinned FROST_C04_DIGEST_BINARY override", async () => {
-      // The FIXTURE parser passes the builder's schema probe; it is
-      // executable and lives in the checkout, not in a temporary directory.
+  describe("[17] digest parser pin (e2e)", () => {
+    // Runs the builder with the given override source and pin, and checks
+    // that the unpinned FIXTURE parser is refused or not used. The FIXTURE
+    // parser passes the builder's schema probe; it is executable and lives in
+    // the checkout, not in a temporary directory.
+    async function expectUnpinnedOverrideNotUsed(
+      what: string,
+      envOverride: string | undefined,
+      pin: string | undefined,
+      call: () => string
+    ): Promise<void> {
       const foreignBytes = fs.readFileSync(foreign)
       let selected: string | undefined
       let refusal: Error | undefined
-      await withEnv("FROST_C04_DIGEST_BINARY", foreign, async () => {
-        await withEnv("FROST_C04_DIGEST_BINARY_SHA256", undefined, () => {
+      await withEnv("FROST_C04_DIGEST_BINARY", envOverride, () =>
+        withEnv("FROST_C04_DIGEST_BINARY_SHA256", pin, () => {
           try {
-            // Every caller passes `options.digestBinary ||
-            // process.env.FROST_C04_DIGEST_BINARY` here (frost-bitcoin,
-            // frost-legacy-bitcoin, frost-core-settlement,
-            // frost-core-conflicting-sweep, frost-public-vault-callback).
-            selected = digestBinaryForRun(process.env.FROST_C04_DIGEST_BINARY)
+            selected = call()
           } catch (error) {
             refusal = error as Error
           }
         })
-      })
+      )
       if (refusal) {
         expect(
           refusal.message,
-          `K09-14: digestBinaryForRun refused the override, but not as an unpinned override (${refusal.message})`
-        ).to.match(/FROST_C04_DIGEST_BINARY/)
+          `K09-14: digestBinaryForRun refused the override (${what}), but not as an unpinned override (${refusal.message})`
+        ).to.match(/FROST_C0[45]_DIGEST_BINARY|unpinned|not pinned/i)
         return
       }
       expect(
         path.resolve(selected as string),
-        "K09-14: digestBinaryForRun used the unpinned FROST_C04_DIGEST_BINARY override (accepted on the schema probe alone)"
+        `K09-14: digestBinaryForRun used the unpinned FROST_C04_DIGEST_BINARY override (accepted on the schema probe alone; ${what})`
       ).to.not.equal(path.resolve(foreign))
       expect(
         fs.readFileSync(selected as string).equals(foreignBytes),
-        "K09-14: digestBinaryForRun returned a byte copy of the unpinned override"
+        `K09-14: digestBinaryForRun returned a byte copy of the unpinned override (${what})`
       ).to.equal(false)
-    })
+    }
+
+    // Most callers pass `options.digestBinary ||
+    // process.env.FROST_C04_DIGEST_BINARY` (frost-legacy-bitcoin,
+    // frost-core-settlement, frost-core-conflicting-sweep,
+    // frost-public-vault-callback). frost-bitcoin also falls back to
+    // FROST_C05_DIGEST_BINARY, and the Frost.Fraud tests set only that one.
+    it("never uses an unpinned FROST_C04_DIGEST_BINARY override", () =>
+      expectUnpinnedOverrideNotUsed(
+        "environment, no pin",
+        foreign,
+        undefined,
+        () => digestBinaryForRun(process.env.FROST_C04_DIGEST_BINARY)
+      ))
+
+    it("never uses a FROST_C04_DIGEST_BINARY override whose pin is wrong", () =>
+      expectUnpinnedOverrideNotUsed(
+        "environment, FROST_C04_DIGEST_BINARY_SHA256 set to another binary's hash",
+        foreign,
+        createHash("sha256")
+          .update(
+            fs.readFileSync(
+              path.join(__dirname, "../helpers/frost-tapscript-digest.go")
+            )
+          )
+          .digest("hex"),
+        () => digestBinaryForRun(process.env.FROST_C04_DIGEST_BINARY)
+      ))
+
+    it("never uses an unpinned override passed directly (options.digestBinary, FROST_C05_DIGEST_BINARY)", () =>
+      expectUnpinnedOverrideNotUsed(
+        "passed directly, FROST_C04_DIGEST_BINARY unset",
+        undefined,
+        undefined,
+        () => digestBinaryForRun(foreign)
+      ))
 
     it("builds the default parser from the committed source and records it (guard)", () => {
       const selected = withEnv("FROST_C04_DIGEST_BINARY", undefined, () =>
@@ -128,6 +172,14 @@ describe("B17a upgrade-stage inputs (K09-14, K09-19)", () => {
   })
 
   describe("[19] legacy origin source root (e2e)", () => {
+    // The baseline build is cached per repository path, so warming it for
+    // this checkout changes nothing a fix can observe. A fix that ignores the
+    // redirect reuses it, and one that follows it builds under the redirect.
+    before(async function warmBaseline() {
+      this.timeout(120000)
+      await legacyBaselineBuild(checkout)
+    })
+
     it("binds the upgraded runtime to this checkout, never to FROST_C04_LEGACY_SOURCE_ROOT", async function sourceRoot() {
       this.timeout(300000)
       const head = git(checkout, "rev-parse", "HEAD")
@@ -139,7 +191,8 @@ describe("B17a upgrade-stage inputs (K09-14, K09-19)", () => {
         checkout,
         git(checkout, "rev-parse", "--git-common-dir")
       )
-      const redirect = path.join(scratch("b17a-source-root-"), "repo")
+      const redirectRoot = scratch("b17a-source-root-")
+      const redirect = path.join(redirectRoot, "repo")
       execFileSync(
         "git",
         ["clone", "--quiet", "--shared", "--no-checkout", common, redirect],
@@ -152,18 +205,25 @@ describe("B17a upgrade-stage inputs (K09-14, K09-19)", () => {
         "FIXTURE: the redirect target's HEAD must differ"
       ).to.not.equal(LEGACY_BASELINE)
 
-      const evidence = path.join(scratch("b17a-origin-"), "evidence")
+      const evidenceRoot = scratch("b17a-origin-")
+      const evidence = path.join(evidenceRoot, "evidence")
       let origin: { currentRevision: string } | undefined
       let refusal: Error | undefined
-      await withEnv("FROST_C04_LEGACY_SOURCE_ROOT", redirect, () =>
-        withEnv("FROST_C04_LEGACY_BASELINE_BUILD", undefined, async () => {
-          try {
-            origin = await publicLegacyOriginFixture(evidence)
-          } catch (error) {
-            refusal = error as Error
-          }
-        })
-      )
+      try {
+        await withEnv("FROST_C04_LEGACY_SOURCE_ROOT", redirect, () =>
+          withEnv("FROST_C04_LEGACY_BASELINE_BUILD", undefined, async () => {
+            try {
+              origin = await publicLegacyOriginFixture(evidence)
+            } catch (error) {
+              refusal = error as Error
+            }
+          })
+        )
+      } finally {
+        // The FIXTURE clone and this case's evidence are scratch.
+        fs.rmSync(redirectRoot, { recursive: true, force: true })
+        fs.rmSync(evidenceRoot, { recursive: true, force: true })
+      }
       if (refusal) {
         expect(
           refusal.message,
