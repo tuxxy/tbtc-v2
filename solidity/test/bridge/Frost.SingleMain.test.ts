@@ -18,6 +18,8 @@
 // the reservation resolves), VD-07 (line 508), and the movement side of
 // P-K05-* (lines 230-239): a movement of the main alone drains the wallet.
 // KC-SF-V3 C-04 (lines 584-586), C-05 (600-602), C-06 (614-616).
+// Also P-K06-D13-NO-SIDE-SWEEP (local KC-VER rev 02 draft, D29), whose V-07
+// counterexample is F-V07-1 (VERIFICATION-REPORT-2026-11-06).
 //
 // FIXTURES: inclusion proofs are synthetic two-leaf regtest blocks
 // (movementWorld): accounting only, not Bitcoin spend validity or chain work.
