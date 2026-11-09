@@ -509,6 +509,9 @@ export default async function runCoreWitnessCheck(
           )
         : {
             explicitOverride: true,
+            binarySHA256: sha(fs.readFileSync(selectedDigestBinary)).toString(
+              "hex"
+            ),
             sourceMatched: false,
             schemaVerified: true,
           },
