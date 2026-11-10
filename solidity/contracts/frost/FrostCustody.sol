@@ -55,7 +55,7 @@ library FrostCustody {
         Wallet storage wallet = self.wallets[walletId];
         bool reserved = wallet.activeReservation != bytes32(0);
         if (reserved) {
-            // Deposit-only recognition cannot initialize or replace plan custody.
+            // The resolution credit cannot initialize or replace plan custody.
             require(
                 wallet.stateVersion != 0 && wallet.mainOutpoint != bytes32(0),
                 "FROST custody reservation state"
@@ -69,8 +69,8 @@ library FrostCustody {
                 wallet.generation == generation,
                 "FROST custody generation"
             );
-            // An admitted plan captures its inputs and version. New proven
-            // deposits are additional custody, never extra inputs to that plan.
+            // An admitted plan captures its inputs and version. The resolution
+            // credit keeps that version until the consumer resolves the plan.
             if (!reserved) wallet.stateVersion += 1;
         }
         require(

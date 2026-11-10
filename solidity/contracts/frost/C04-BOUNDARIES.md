@@ -99,7 +99,8 @@ transitions must be implemented in the Bridge consumer before admission exits:
   review.
 - Actual local state-version transitions: first recognized custody credit sets
   uint64 stateVersion to one. Every subsequent unreserved credit increments it,
-  including deposit-only sweep credit without main consumption. Deposit-only
+  including a deposit-only sweep credit, which is admitted only while the wallet
+  has no main (its first sweep, or after a movement). Deposit-only
   sweeps are refused during an active reservation (D13 refinement,
   tuxxy/tbtc-v2#24). Confirmed payment/cancellation replacement
   increments stateVersion; governance quarantine increments it and preserves
