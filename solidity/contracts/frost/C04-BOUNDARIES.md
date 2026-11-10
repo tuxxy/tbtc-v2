@@ -99,9 +99,10 @@ transitions must be implemented in the Bridge consumer before admission exits:
   review.
 - Actual local state-version transitions: first recognized custody credit sets
   uint64 stateVersion to one. Every subsequent unreserved credit increments it,
-  including deposit-only sweep credit without main consumption. Additional
-  deposit-only credit during an active reservation preserves the admitted main,
-  intent generation and stateVersion. Confirmed payment/cancellation replacement
+  including a deposit-only sweep credit, which is admitted only while the wallet
+  has no main (its first sweep, or after a movement). Deposit-only
+  sweeps are refused during an active reservation (D13 refinement,
+  tuxxy/tbtc-v2#24). Confirmed payment/cancellation replacement
   increments stateVersion; governance quarantine increments it and preserves
   unresolved escrow/history. Reservation admission increments intent generation,
   not stateVersion. Timeout, cancellation authorization and ordinary governance
@@ -265,8 +266,8 @@ for the future exact defense join. Exposure clears only on proven resolution.
 
 The milestone exit is still open. C-04 now consumes the common C-05
 `FrostCustody.Storage`, not private copies of custody records. It subtracts only
-its captured spent inputs and preserves any later deposit-only credits during
-an active reservation. Intent counters remain separate from registry readiness.
+its captured spent inputs; no deposit-only credit happens during an active
+reservation (D13 refinement, tuxxy/tbtc-v2#24). Intent counters remain separate from registry readiness.
 Affected capacity/escrow and actual linked-proxy checks passed 19 cases.
 This checkout contains a local composition of C-05/C-07 sources; it still needs
 the prerequisite commits and publication stack. Three public funding checks

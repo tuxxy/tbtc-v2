@@ -1,0 +1,60 @@
+diff --git a/solidity/contracts/frost/FrostBridge.sol b/solidity/contracts/frost/FrostBridge.sol
+index 0b0e69fc..77c0d191 100644
+--- a/solidity/contracts/frost/FrostBridge.sol
++++ b/solidity/contracts/frost/FrostBridge.sol
+@@ -483,12 +483,11 @@ library FrostBridge {
+                     )
+                 );
+         } else if (selector == IFrostBridge.isFrostFundingTarget.selector) {
+-            FrostWallets.Wallet storage w = self.frost.wallets[
+-                abi.decode(args, (bytes20))
+-            ];
+             return
+                 abi.encode(
+-                    w.state == FrostWallets.State.Live && !w.quarantined
++                    FrostWallets.isMovementTarget(
++                        self.frost.wallets[abi.decode(args, (bytes20))]
++                    )
+                 );
+         } else {
+             return FrostMovementDispatch.dispatch(self, input);
+diff --git a/solidity/contracts/frost/FrostDepositAdmission.sol b/solidity/contracts/frost/FrostDepositAdmission.sol
+index 6e9d7ece..a9ada62e 100644
+--- a/solidity/contracts/frost/FrostDepositAdmission.sol
++++ b/solidity/contracts/frost/FrostDepositAdmission.sol
+@@ -200,6 +200,18 @@ library FrostDepositAdmission {
+         );
+     }
+ 
++    function requireWallet(
++        FrostWallets.Wallet storage wallet,
++        FrostDepositProfile.Terms memory terms
++    ) private view {
++        require(
++            wallet.id == terms.fullWalletId &&
++                wallet.descriptorHash == terms.descriptorHash &&
++                FrostWallets.isMovementTarget(wallet),
++            "FROST deposit wallet"
++        );
++    }
++
+     function validateTerms(
+         BridgeState.Storage storage bridge,
+         FrostFundingState.Storage storage funding,
+@@ -216,15 +228,7 @@ library FrostDepositAdmission {
+         FrostWallets.Wallet storage wallet = bridge.frost.wallets[
+             bytes20(terms.fullWalletId)
+         ];
+-        require(
+-            wallet.id == terms.fullWalletId &&
+-                wallet.descriptorHash == terms.descriptorHash &&
+-                !wallet.quarantined &&
+-                wallet.capabilityVersion > 0 &&
+-                (wallet.state == FrostWallets.State.ReadyUnfunded ||
+-                    wallet.state == FrostWallets.State.Live),
+-            "FROST deposit wallet"
+-        );
++        requireWallet(wallet, terms);
+         require(
+             terms.vault == address(0) || bridge.isVaultTrusted[terms.vault],
+             "FROST vault untrusted"

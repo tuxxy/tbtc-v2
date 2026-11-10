@@ -171,7 +171,6 @@ describe("C-04 sweep resolution releases cancellation exposure (tbtc-v2#33)", ()
   let descriptorHash: string
   let genesis: string
   let main: Tx
-  let other: Tx
   let conflictDeposit: Tx
   let snapshot: string
   let serial = 0
@@ -304,7 +303,7 @@ describe("C-04 sweep resolution releases cancellation exposure (tbtc-v2#33)", ()
       generation: custody.generation.add(1),
       stateVersion: custody.stateVersion,
       validUntilBlock: (await ethers.provider.getBlockNumber()) + 100,
-      inputs: [utxo(main, 1, 79000), utxo(other, 0, 99000)],
+      inputs: [utxo(main, 0, 178000)],
       requests: [{ id, value: GROSS - RESERVATION_FEE, script: SCRIPT }],
       fee: RESERVATION_FEE,
       minimumFee: 100,
@@ -317,13 +316,12 @@ describe("C-04 sweep resolution releases cancellation exposure (tbtc-v2#33)", ()
     return reservationId
   }
 
-  /// An admitted cancellation of both captured inputs, sponsored by the payer.
+  /// An admitted cancellation of the captured main, sponsored by the payer.
   async function cancel(reservationId: string, fee: number) {
-    const t = transaction([main.hash, other.hash], Q, 178000 - fee, [1, 0])
+    const t = transaction([main.hash], Q, 178000 - fee, [0])
     const validator = await deploy("FrostRedemptionTransactionFixture")
     const result = await validator.validateCancellation(t.tx, Q, [
-      utxo(main, 1, 79000),
-      utxo(other, 0, 99000),
+      utxo(main, 0, 178000),
     ])
     const authorization = {
       reservationId,
@@ -349,7 +347,7 @@ describe("C-04 sweep resolution releases cancellation exposure (tbtc-v2#33)", ()
   }
 
   async function resolve(reservationId: string) {
-    const t = transaction([conflictDeposit.hash, main.hash], Q, 178000, [0, 1])
+    const t = transaction([conflictDeposit.hash, main.hash], Q, 277000, [0, 0])
     const authorization = {
       reservationId,
       transactionHash: t.hash,
@@ -484,8 +482,11 @@ describe("C-04 sweep resolution releases cancellation exposure (tbtc-v2#33)", ()
     )
     await frost.setFrostRedemptionsEnabled(true)
 
-    // Wallet custody, as in the A3 setup: a main from a bootstrap redemption's
-    // change (79,000) plus an independently recognized deposit output (99,000).
+    // Wallet custody: one 178,000 main. A bootstrap redemption is paid (its
+    // change is 79,000); the deposit revealed meanwhile waits for the
+    // reservation and is then swept together with the change into one main.
+    // D13 refinement (tuxxy/tbtc-v2#24): no deposit-only credit beside a
+    // reserved main, so recognized custody is always exactly the main.
     const d0 = await reveal(ID, descriptorHash, Q, 100000)
     const d1 = await reveal(ID, descriptorHash, Q, 100000)
     conflictDeposit = await reveal(ID, descriptorHash, Q, 100000)
@@ -510,22 +511,19 @@ describe("C-04 sweep resolution releases cancellation exposure (tbtc-v2#33)", ()
     })
     const bootstrapId = await frost.callStatic.reserveFrostRedemption(bootstrap)
     await frost.reserveFrostRedemption(bootstrap)
-    other = transaction([d1.hash], Q, 99000)
-    await frost.submitFrostDepositSweepProof(sweep(ID, other, false))
     await frost.submitFrostRedemptionProof(
       bootstrapId,
       bootstrap.transaction,
       inclusion(hashOf(bootstrap.transaction))
     )
     const paymentHash = hashOf(bootstrap.transaction)
-    main = {
-      tx: bootstrap.transaction,
-      hash: paymentHash,
-      key: outpoint(paymentHash, 1),
-      index: 1,
-    }
-    expect((await frost.frostCustodyOutput(main.key)).value).eq(79000)
+    const change = outpoint(paymentHash, 1)
+    expect((await frost.frostCustodyOutput(change)).value).eq(79000)
+    main = transaction([d1.hash, paymentHash], Q, 178000, [0, 1])
+    await frost.submitFrostDepositSweepProof(sweep(ID, main, true))
+    expect((await frost.frostCustodyOutput(main.key)).value).eq(178000)
     expect((await frost.frostWalletCustody(ID)).value).eq(178000)
+    expect((await frost.frostWalletCustody(ID)).mainOutpoint).eq(main.key)
 
     // Liquidity only: the second wallet's deposit credits the redeemer's Bank
     // balance without changing the first wallet's custody.

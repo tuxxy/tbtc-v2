@@ -45,10 +45,26 @@ function checkSchema(binary: string): void {
   assert.equal(result.txidRPC, hash.reverse().toString("hex"))
 }
 
+// An override (FROST_C04_DIGEST_BINARY, FROST_C05_DIGEST_BINARY or an
+// explicit option) is used only when FROST_C04_DIGEST_BINARY_SHA256 pins its
+// exact bytes; the schema probe alone does not identify the parser (K09-14).
+// The override is copied into a private directory first, and the copy is
+// hashed and returned, so the bytes checked are the bytes later run.
 export function digestBinaryForRun(override?: string): string {
   if (override) {
-    checkSchema(override)
-    return override
+    const pin = process.env.FROST_C04_DIGEST_BINARY_SHA256
+    const copy = path.join(
+      fs.mkdtempSync(path.join(os.tmpdir(), "frost-digest-override-")),
+      path.basename(override)
+    )
+    fs.copyFileSync(override, copy)
+    fs.chmodSync(copy, 0o500)
+    assert(
+      pin !== undefined && sha(fs.readFileSync(copy)) === pin.toLowerCase(),
+      `digest binary override ${override} is not pinned: FROST_C04_DIGEST_BINARY / FROST_C05_DIGEST_BINARY overrides need a matching FROST_C04_DIGEST_BINARY_SHA256`
+    )
+    checkSchema(copy)
+    return copy
   }
   const source = fs.readFileSync(
     path.join(__dirname, "frost-tapscript-digest.go")

@@ -1,0 +1,12 @@
+diff --git a/solidity/contracts/frost/FrostWallets.sol b/solidity/contracts/frost/FrostWallets.sol
+index c91a8941..587a8d36 100644
+--- a/solidity/contracts/frost/FrostWallets.sol
++++ b/solidity/contracts/frost/FrostWallets.sol
+@@ -32,6 +32,7 @@ library FrostWallets {
+         bool quarantined;
+         uint32 generation;
+         uint32 capabilityVersion;
++        bool fundingTarget;
+     }
+     // Four slots, taken from the tail of BridgeState's reserved storage gap.
+     struct Storage {

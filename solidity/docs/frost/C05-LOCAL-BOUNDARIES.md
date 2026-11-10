@@ -27,10 +27,11 @@ custody. Trusted vault routing uses the existing Bank callback order; revoked
 trust falls back to depositor Bank balances. Effects precede callbacks and a
 late failure reverts the complete operation.
 
-Deposit-only proofs may add custody during an active reservation. They preserve
-the admitted main, state version and intent counter. Main-consuming proofs
-reject active reservations. The C-04 consumer must subtract only its captured
-spent inputs and retain later credited outputs. Registry readiness32 is separate
+Deposit-only proofs are refused during an active reservation (D13 refinement,
+tuxxy/tbtc-v2#24): deposits wait until the reservation resolves, so custody
+stays one main. Main-consuming proofs reject active reservations, except the
+C-04 sweep resolution under its resolution authorization. The C-04 consumer
+subtracts only its captured spent inputs. Registry readiness32 is separate
 from the custody uint64 intent counter.
 
 Shared funding outpoint identities use raw Bitcoin hash bytes and packed uint32

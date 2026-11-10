@@ -483,12 +483,11 @@ library FrostBridge {
                     )
                 );
         } else if (selector == IFrostBridge.isFrostFundingTarget.selector) {
-            FrostWallets.Wallet storage w = self.frost.wallets[
-                abi.decode(args, (bytes20))
-            ];
             return
                 abi.encode(
-                    w.state == FrostWallets.State.Live && !w.quarantined
+                    FrostWallets.isMovementTarget(
+                        self.frost.wallets[abi.decode(args, (bytes20))]
+                    )
                 );
         } else {
             return FrostMovementDispatch.dispatch(self, input);

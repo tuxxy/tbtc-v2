@@ -1,0 +1,51 @@
+diff --git a/solidity/contracts/frost/FrostBridge.sol b/solidity/contracts/frost/FrostBridge.sol
+index 0b0e69fc..c36fc7d3 100644
+--- a/solidity/contracts/frost/FrostBridge.sol
++++ b/solidity/contracts/frost/FrostBridge.sol
+@@ -483,12 +483,11 @@ library FrostBridge {
+                     )
+                 );
+         } else if (selector == IFrostBridge.isFrostFundingTarget.selector) {
+-            FrostWallets.Wallet storage w = self.frost.wallets[
+-                abi.decode(args, (bytes20))
+-            ];
+             return
+                 abi.encode(
+-                    w.state == FrostWallets.State.Live && !w.quarantined
++                    FrostWallets.isFundingTarget(
++                        self.frost.wallets[abi.decode(args, (bytes20))]
++                    )
+                 );
+         } else {
+             return FrostMovementDispatch.dispatch(self, input);
+diff --git a/solidity/contracts/frost/FrostDepositAdmission.sol b/solidity/contracts/frost/FrostDepositAdmission.sol
+index 6e9d7ece..7f20e4bb 100644
+--- a/solidity/contracts/frost/FrostDepositAdmission.sol
++++ b/solidity/contracts/frost/FrostDepositAdmission.sol
+@@ -219,10 +219,7 @@ library FrostDepositAdmission {
+         require(
+             wallet.id == terms.fullWalletId &&
+                 wallet.descriptorHash == terms.descriptorHash &&
+-                !wallet.quarantined &&
+-                wallet.capabilityVersion > 0 &&
+-                (wallet.state == FrostWallets.State.ReadyUnfunded ||
+-                    wallet.state == FrostWallets.State.Live),
++                FrostWallets.isFundingTarget(wallet),
+             "FROST deposit wallet"
+         );
+         require(
+diff --git a/solidity/contracts/frost/FrostWallets.sol b/solidity/contracts/frost/FrostWallets.sol
+index c91a8941..926eca5e 100644
+--- a/solidity/contracts/frost/FrostWallets.sol
++++ b/solidity/contracts/frost/FrostWallets.sol
+@@ -200,6 +200,10 @@ library FrostWallets {
+         emit FrostWalletExpired(id);
+     }
+ 
++    function isFundingTarget(Wallet storage w) internal view returns (bool) {
++        return w.state == State.Live && !w.quarantined;
++    }
++
+     /// @notice C-06 eligibility for a new movement commitment target.
+     function isMovementTarget(Wallet storage w) internal view returns (bool) {
+         return

@@ -297,8 +297,8 @@ library FrostDepositSweep {
         bytes32 resolutionId
     ) private {
         // Main replacement is allowed only with its canonical spend proof, and
-        // cannot race a redemption reservation. Additional deposit-only sweeps
-        // retain the existing main and all captured reservation inputs.
+        // cannot race a redemption reservation. A deposit-only sweep is
+        // admitted only for a wallet with no main, so custody stays one main.
         if (request.includeMain) {
             FrostCustody.Wallet storage balance = bridge.frostCustody.wallets[
                 request.walletId
@@ -385,9 +385,7 @@ library FrostDepositSweep {
         accounting.deposits = new bytes32[](accounting.count);
         FrostCustody.Wallet storage balance = custody.wallets[request.walletId];
         require(
-            request.includeMain ||
-                balance.mainOutpoint == bytes32(0) ||
-                balance.activeReservation != bytes32(0),
+            request.includeMain || balance.mainOutpoint == bytes32(0),
             "FROST sweep main required"
         );
         if (request.includeMain)
