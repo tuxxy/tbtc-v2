@@ -100,8 +100,8 @@
     "FROST public SPV maintainer authorization gates funding, payment and cancellation through the actual funded Bridge"
   ],
   "test/bridge/Frost.PublicVaultCallback.test.ts": [
-    "C-04 public Vault callback and captured watchtower boundaries credits a trusted Vault through Bank while main is reserved and rejects request/reserve reentry during C05 sweep",
-    "C-04 public Vault callback and captured watchtower boundaries rolls back all proof/deposit/custody/Bank/Vault effects on a callback-reverting late failure",
+    "C-04 public Vault callback and captured watchtower boundaries refuses the deposit-only trusted-Vault sweep while main is reserved, before any callback (callback succeeding)",
+    "C-04 public Vault callback and captured watchtower boundaries refuses the deposit-only trusted-Vault sweep while main is reserved, before any callback (callback reverting late)",
     "C-04 public Vault callback and captured watchtower boundaries retains captured watchtower policy/delay across configuration changes and refuses the old service's veto"
   ],
   "test/bridge/Frost.SweepConflictResolution.Core.test.ts": [
@@ -111,8 +111,8 @@
   "test/bridge/Frost.SweepConflictResolution.test.ts": [
     "C-04 approved sweep conflict resolution (synthetic inclusion component) C-10: requests, reserves and pays a FROST redemption under containment, counters unchanged",
     "C-04 approved sweep conflict resolution (synthetic inclusion component) C-10: cancels a reserved FROST redemption and times out another under containment, counters unchanged",
-    "C-04 approved sweep conflict resolution (synthetic inclusion component) S constructed before R: refunds and credits once, retaining captured extra inputs, late custody and archives",
-    "C-04 approved sweep conflict resolution (synthetic inclusion component) R before S construction/confirmation: refunds and credits once, retaining captured extra inputs, late custody and archives",
+    "C-04 approved sweep conflict resolution (synthetic inclusion component) S constructed before R: refunds and credits once, retaining the captured input, the waiting late deposit and archives",
+    "C-04 approved sweep conflict resolution (synthetic inclusion component) R before S construction/confirmation: refunds and credits once, retaining the captured input, the waiting late deposit and archives",
     "C-04 approved sweep conflict resolution (synthetic inclusion component) recovers historical timeout intent after reservation expiry with fresh resolution authority and admissions disabled",
     "C-04 approved sweep conflict resolution (synthetic inclusion component) recovers historical quarantined intent after reservation expiry with fresh resolution authority and admissions disabled",
     "C-04 approved sweep conflict resolution (synthetic inclusion component) rejects wrong conflict input, key, proof, deposit set and fee with complete rollback",
