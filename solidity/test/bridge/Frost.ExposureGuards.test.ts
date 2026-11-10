@@ -39,7 +39,9 @@
 // "not installed" guard on the reveal path, since the funding gates refuse
 // to open without a controller and an installed one cannot be removed).
 import { ethers, network } from "hardhat"
-import { expect } from "chai"
+import { AssertionError, expect } from "chai"
+import { Contract, Overrides } from "ethers"
+import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers"
 import {
   MAX_UINT64,
   movementWorld,
@@ -58,19 +60,27 @@ const TOP_UP = ethers.utils.id("M1 exposure guard test top-up")
 const MANIFEST = ethers.utils.id("M1 exposure guard test manifest")
 const Mode = { LegacyOpen: 0, LegacyDraining: 1, FrostOnly: 2 }
 
-/// Awaits a step that must succeed: a refusal fails here, at a named
-/// assertion, rather than as an uncaught revert.
+/// Awaits a step that must succeed: a refusal fails as a named assertion
+/// whose stack starts at the call site, rather than as an uncaught revert.
 async function ok<T>(step: Promise<T>, label: string): Promise<T> {
+  const site: { stack?: string } = {}
+  Error.captureStackTrace(site, ok)
   try {
     return await step
-  } catch (error: any) {
-    return expect.fail(
-      `${label} was refused: ${error?.reason ?? error?.message}`
+  } catch (error) {
+    const { reason, message } = error as { reason?: string; message?: string }
+    const failure: Error = new AssertionError(
+      `${label} was refused: ${reason ?? message}`
     )
+    failure.stack = `AssertionError: ${failure.message}\n${(site.stack ?? "")
+      .split("\n")
+      .slice(1)
+      .join("\n")}`
+    throw failure
   }
 }
 
-const counters = async (c: any) => ({
+const counters = async (c: Contract) => ({
   custodyReserved: (await c.custodyReserved()).toString(),
   custodyReleased: (await c.custodyReleased()).toString(),
   custodyAdmitted: (await c.custodyAdmitted()).toString(),
@@ -80,12 +90,12 @@ const counters = async (c: any) => ({
 })
 
 describe("C-10 exposure controller guards (mutation batch M1)", () => {
-  let c: any
-  let governance: any
-  let bridge: any
-  let guardian: any
-  let stranger: any
-  let next: any
+  let c: Contract
+  let governance: SignerWithAddress
+  let bridge: SignerWithAddress
+  let guardian: SignerWithAddress
+  let stranger: SignerWithAddress
+  let next: SignerWithAddress
   const id = (name: string) => ethers.utils.id(`M1 reservation ${name}`)
 
   beforeEach(async () => {
@@ -242,7 +252,7 @@ describe("C-10 exposure controller guards (mutation batch M1)", () => {
     await ok(c.reserve(id("a"), 100, 0), "c.reserve(id('a'), 100, 0)")
     await ok(c.reserveDeposit(50), "c.reserveDeposit(50)")
     const before = await counters(c)
-    const calls: [string, (s: any) => Promise<unknown>][] = [
+    const calls: [string, (s: SignerWithAddress) => Promise<unknown>][] = [
       ["reserve", (s) => c.connect(s).reserve(id("b"), 1, 1)],
       ["reserveDeposit", (s) => c.connect(s).reserveDeposit(1)],
       ["completeDeposits", (s) => c.connect(s).completeDeposits(1, 50, 50, 50)],
@@ -458,11 +468,11 @@ describe("C-10 exposure controller guards (mutation batch M1)", () => {
 
 describe("C-10 exposure Bridge guards (mutation batch M1)", () => {
   let w: World
-  let stranger: any
+  let stranger: SignerWithAddress
   let snapshot: string
 
   const keyOf = (funding: Tx) => outpoint(funding.hash, 0)
-  const reserve = (funding: Tx, overrides: any = {}) =>
+  const reserve = (funding: Tx, overrides: Overrides = {}) =>
     w.frost.reserveFrostDeposit(
       keyOf(funding),
       funding.tx,
@@ -481,7 +491,7 @@ describe("C-10 exposure Bridge guards (mutation batch M1)", () => {
     snapshot = await network.provider.send("evm_snapshot")
   })
 
-  it("routes every C-10 selector to the exposure dispatch and every other selector past it", async () => {
+  it("passes a non-C-10 view past the exposure dispatch and routes the C-10 writes (begin, abort, cutover) to it", async () => {
     // A lifecycle view behind the exposure dispatch must still answer.
     expect(
       await ok(
