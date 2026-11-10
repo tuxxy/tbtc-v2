@@ -109,9 +109,17 @@ jobs:
 
       # We don't want to execute the tests for dapp-friendly contracts (either
       # when deploying from `dapp-development` or during PR checks on that branch).
+      # Keep the step name "Run tests": the frozen batch-5 runner
+      # (test/portability/fresh-checkout.sh) finds its steps by that name.
       - name: Run tests
         if: github.ref != 'refs/heads/dapp-development' && github.head_ref != 'dapp-development'
-        run: yarn test
+        run: yarn test:unit
+
+      # Bitcoin Core, Go helpers, the 40a11d1d baseline and full deployed
+      # worlds (test/suites/e2e.txt); the provisioning steps above serve these.
+      - name: Run end-to-end tests
+        if: github.ref != 'refs/heads/dapp-development' && github.head_ref != 'dapp-development'
+        run: yarn test:e2e
 
       - name: Run integration tests
         if: github.ref != 'refs/heads/dapp-development' && github.head_ref != 'dapp-development'

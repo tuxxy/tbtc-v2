@@ -1,0 +1,39 @@
+# End-to-end test files: each needs an external program or a full deployed
+# world: Bitcoin Core, a Go helper built with `go`, the 40a11d1d baseline
+# built from git, or the real ECDSA WalletRegistry with staked operators.
+# Every other test file is a unit test.
+#
+# `yarn test:e2e` runs these files, `yarn test:unit` the rest, `yarn test`
+# both (scripts/test-isolated.cjs reads this file). One file per line.
+
+test/b8/B8.MovementTargetCap.test.ts  # 40a11d1d baseline built from git; real ECDSA registry world
+test/b8/B8.RebateStakingPrecondition.test.ts  # 40a11d1d baseline built from git; real ECDSA registry world
+test/b8/B8.RebateStakingUnset.test.ts  # 40a11d1d baseline built from git; real ECDSA registry world
+test/b8/B8.UnsignedMovementTargets.test.ts  # 40a11d1d baseline built from git; real ECDSA registry world
+test/b17a/B17a.UpgradeInputs.test.ts  # 40a11d1d baseline built from git; Go build; Bitcoin Core
+test/bridge/Frost.CancellationAlternatives.test.ts  # Bitcoin Core; Go digest binary (go build)
+test/bridge/Frost.DepositSweep.test.ts  # Bitcoin Core; Go digest binary (go build)
+test/bridge/Frost.Fraud.MovementOutputCap.test.ts  # Go digest binary (go build)
+test/bridge/Frost.Fraud.test.ts  # Go digest binary (go build)
+test/bridge/Frost.LegacyReconciliation.test.ts  # 40a11d1d baseline built from git; Bitcoin Core + baseline; Go digest binary (go build)
+test/bridge/Frost.PublicFunding.test.ts  # Bitcoin Core; Go digest binary (go build)
+test/bridge/Frost.PublicGasCap.test.ts  # Bitcoin Core; Go digest binary (go build)
+test/bridge/Frost.PublicMaximumBatch.test.ts  # Bitcoin Core; Go digest binary (go build)
+test/bridge/Frost.PublicNegativeGuards.test.ts  # Bitcoin Core; Go digest binary (go build)
+test/bridge/Frost.PublicReservation.test.ts  # Bitcoin Core; Go digest binary (go build)
+test/bridge/Frost.PublicSettlement.test.ts  # Bitcoin Core; Go digest binary (go build)
+test/bridge/Frost.PublicSpvMaintainer.test.ts  # Bitcoin Core; Go digest binary (go build)
+test/bridge/Frost.PublicVaultCallback.test.ts  # Bitcoin Core; Go digest binary (go build)
+test/bridge/Frost.SweepConflictResolution.Core.test.ts  # Bitcoin Core; Go digest binary (go build)
+test/bridge/Frost.Verifier.GoOracle.test.ts  # spawns a process
+test/c11/Frost.Upgrade.Governance.test.ts  # 40a11d1d baseline built from git; baseline source via git; real ECDSA registry world
+test/c11/Frost.Upgrade.test.ts  # 40a11d1d baseline built from git; baseline source via git; real ECDSA registry world
+test/c11/c11-cases.ts  # shared C-11 cases: 40a11d1d baseline built from git
+test/cross-chain/wormhole/L1BTCDepositorNttWithExecutor.integration.test.ts  # integration world (test:integration)
+test/deploy/85_deploy_tip109_governance_upgrade.test.ts  # 40a11d1d baseline built from git
+test/integration/FullFlow.test.ts  # integration world (test:integration)
+test/integration/Slashing.test.ts  # integration world (test:integration)
+test/integration/WalletCreation.test.ts  # integration world (test:integration)
+test/k09/K09.CutoverInvariants.test.ts  # 40a11d1d baseline built from git; real ECDSA registry world
+test/k09/K09.LegacyObligations.test.ts  # 40a11d1d baseline built from git; baseline source via git; real ECDSA registry world
+test/k09/K09.RegistryCutover.test.ts  # 40a11d1d baseline built from git; real ECDSA registry world
