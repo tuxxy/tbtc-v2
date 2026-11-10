@@ -25,7 +25,8 @@
     "lint:fix:eslint": "eslint . --fix",
     "lint:sol": "solhint 'contracts/**/*.sol'",
     "lint:fix:sol": "solhint 'contracts/**/*.sol' --fix",
-    "test": "USE_EXTERNAL_DEPLOY=true TEST_USE_STUBS_TBTC=true hardhat test",
+    "test": "USE_EXTERNAL_DEPLOY=true TEST_USE_STUBS_TBTC=true node scripts/test-isolated.cjs",
+    "test:single-process": "USE_EXTERNAL_DEPLOY=true TEST_USE_STUBS_TBTC=true hardhat test",
     "test:integration": "NODE_ENV=integration-test USE_EXTERNAL_DEPLOY=true TEST_USE_STUBS_TBTC=true hardhat test ./test/integration/*.test.ts",
     "prepack": "tsc -p tsconfig.export.json && hardhat export-artifacts export/artifacts",
     "prepublishOnly": "./scripts/prepare-artifacts.sh --network $npm_config_network"

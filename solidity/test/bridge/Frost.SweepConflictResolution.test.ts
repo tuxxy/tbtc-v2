@@ -143,7 +143,10 @@ const OTHER_Q =
 
 type Tx = ReturnType<typeof transaction>
 
-describe("C-04 approved sweep conflict resolution (synthetic inclusion component)", () => {
+describe("C-04 approved sweep conflict resolution (synthetic inclusion component)", function sweepConflictResolution() {
+  // One process per file on CI's 2-job runner pushed a case past mocha's
+  // 60 s default.
+  this.timeout(180000)
   let bridge: any
   let frost: any
   let bank: any
