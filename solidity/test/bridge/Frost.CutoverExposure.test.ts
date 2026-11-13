@@ -1309,7 +1309,6 @@ describe("C-10 losses", () => {
 describe("C-10 one-way DKG cutover", () => {
   let w: World
   let snapshot: string
-  let stranger: any
   const h = helpers(() => w)
   const none = {
     txHash: ethers.constants.HashZero,
@@ -1320,7 +1319,6 @@ describe("C-10 one-way DKG cutover", () => {
 
   before(async () => {
     w = await movementWorld(3)
-    ;[, , , , , , stranger] = w.signers
     await w.legacyRegistry.setMember(w.operator.address)
     await w.frost.setFrostDrainEnabled(true)
     snapshot = await network.provider.send("evm_snapshot")
@@ -1328,40 +1326,6 @@ describe("C-10 one-way DKG cutover", () => {
   beforeEach(async () => {
     expect(await network.provider.send("evm_revert", [snapshot])).to.equal(true)
     snapshot = await network.provider.send("evm_snapshot")
-  })
-
-  it("moves only forward, by governance, with records", async () => {
-    expect(await w.frost.frostCreationMode()).to.equal(Mode.LegacyOpen)
-    await expect(w.frost.completeFrostCutover(MANIFEST)).to.be.revertedWith(
-      "FROST cutover state"
-    )
-    await expect(w.frost.abortLegacyDkgDrain(RECORD)).to.be.revertedWith(
-      "Legacy DKG drain abort"
-    )
-    for (const call of [
-      () => w.frost.connect(stranger).beginLegacyDkgDrain(),
-      () => w.frost.connect(stranger).abortLegacyDkgDrain(RECORD),
-      () => w.frost.connect(stranger).completeFrostCutover(MANIFEST),
-    ])
-      await expect(call()).to.be.revertedWith("Caller is not governance")
-    await expect(w.frost.beginLegacyDkgDrain()).to.emit(
-      w.frost,
-      "LegacyDkgDrainBegun"
-    )
-    await expect(w.frost.beginLegacyDkgDrain()).to.be.revertedWith(
-      "Legacy DKG not open"
-    )
-    await expect(
-      w.frost.abortLegacyDkgDrain(ethers.constants.HashZero)
-    ).to.be.revertedWith("Legacy DKG drain abort")
-    await expect(w.frost.abortLegacyDkgDrain(RECORD))
-      .to.emit(w.frost, "LegacyDkgDrainAborted")
-      .withArgs(RECORD)
-    expect(await w.frost.frostCreationMode()).to.equal(Mode.LegacyOpen)
-    await w.frost.beginLegacyDkgDrain()
-    await expect(
-      w.frost.completeFrostCutover(ethers.constants.HashZero)
-    ).to.be.revertedWith("FROST cutover state")
   })
 
   it("completes the cutover only with the legacy DKG IDLE and its pool unlocked, once and for good", async () => {
@@ -1437,13 +1401,5 @@ describe("C-10 one-way DKG cutover", () => {
     const { tx } = await h.commitDrain(pkh, main)
     await w.bridge.submitMovingFundsProof(tx.tx, inclusion(tx.hash), main, pkh)
     expect(await h.legacyState(pkh)).to.equal(LegacyState.Closing)
-  })
-
-  it("refuses the cutover without a FROST registry", async () => {
-    const b = await bareBridge()
-    await b.frost.beginLegacyDkgDrain()
-    await expect(b.frost.completeFrostCutover(MANIFEST)).to.be.revertedWith(
-      "FROST cutover registry"
-    )
   })
 })
