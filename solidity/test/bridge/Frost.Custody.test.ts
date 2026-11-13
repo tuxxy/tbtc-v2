@@ -58,7 +58,7 @@ describe("C-05 shared qualified custody component", () => {
     expect((await p.output(await p.key(hash, 0))).spent).eq(true)
     expect((await p.wallet(other)).stateVersion).eq(0)
   })
-  it("accepts deposit-only credits while preserving the captured plan", async () => {
+  it("keeps the captured plan, version and main through resolution credits while reserved, and versions credits again once released", async () => {
     const p = await fixture()
     await p.credit(id, 0, hash, 0, 100)
     await p.credit(id, 0, hash, 1, 200)
@@ -83,7 +83,6 @@ describe("C-05 shared qualified custody component", () => {
       capturedOutputs
     )
     expect((await p.output(await p.key(hash, 2))).value).eq(50)
-    // A captured-input consumer subtracts 300, preserving 125 of later deposits.
     expect(after.value.sub(300)).eq(125)
     await p.reserve(id, zero)
     await p.credit(id, 1, hash, 4, 1)
